@@ -71,7 +71,7 @@ export default function Login() {
 
         <div className="relative z-[1] flex items-center gap-3">
           <img
-            src="/logo.svg?v=7"
+            src="/logo.svg?v=8"
             alt=""
             className="w-11 h-11 rounded-xl ring-1 ring-white/20 shadow-lg"
           />
@@ -127,7 +127,7 @@ export default function Login() {
           {/* Brand compacta: solo mobile */}
           <div className="lg:hidden flex items-center gap-3 mb-8 pr-12">
             <img
-              src="/logo.svg?v=7"
+              src="/logo.svg?v=8"
               alt=""
               className="w-11 h-11 rounded-xl ring-1 ring-white/10 shadow-md shrink-0"
             />

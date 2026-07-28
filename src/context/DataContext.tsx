@@ -38,16 +38,33 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadData = async () => {
     if (!user) {
+      setMuscleGroups([]);
+      setExercises([]);
+      setWorkouts([]);
+      setBodyWeights([]);
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     try {
       const [groups, exs, wks, bws] = await Promise.all([
-        getMuscleGroups(user.uid),
-        getExercises(user.uid),
-        getWorkouts(user.uid),
-        getBodyWeights(user.uid),
+        getMuscleGroups(user.uid).catch((err) => {
+          console.error('Error loading muscleGroups:', err);
+          return [] as MuscleGroup[];
+        }),
+        getExercises(user.uid).catch((err) => {
+          console.error('Error loading exercises:', err);
+          return [] as Exercise[];
+        }),
+        getWorkouts(user.uid).catch((err) => {
+          console.error('Error loading workouts:', err);
+          return [] as Workout[];
+        }),
+        getBodyWeights(user.uid).catch((err) => {
+          console.error('Error loading bodyWeights:', err);
+          return [] as BodyWeight[];
+        }),
       ]);
 
       setMuscleGroups(groups);

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gym11 — Iconos Lucide existentes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c111b;
+      --surface: #151c2a;
+      --border: rgba(255,255,255,0.08);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #A80000;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 1.5rem 1rem 3rem;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    h1 { font-size: 1.75rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); margin: 0 0 1.25rem; font-size: 0.95rem; line-height: 1.45; }
+    .sub a { color: #93c5fd; }
+    .ref {
+      margin: 0 0 1.5rem;
+      padding: 1rem;
+      border-radius: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .ref img { width: 56px; height: 56px; border-radius: 12px; }
+    .ref p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+    .ref strong { color: var(--text); }
+    h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 1.75rem 0 0.85rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 0.85rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1rem 0.75rem 0.85rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .card:hover { border-color: rgba(255,255,255,0.22); transform: translateY(-1px); }
+    .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .logo-preview {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 0.75rem;
+      border-radius: 16px;
+      background: #131924;
+      display: grid;
+      place-items: center;
+      outline: 1px solid rgba(255,255,255,0.1);
+    }
+    .logo-preview img {
+      width: 36px;
+      height: 36px;
+      filter: invert(1);
+    }
+    .nav-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin: 0 auto 0.65rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .nav-row img {
+      width: 16px;
+      height: 16px;
+      filter: invert(1);
+      opacity: 0.92;
+    }
+    .name { font-size: 0.85rem; font-weight: 600; }
+    .id { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; word-break: break-all; }
+    .pick {
+      position: sticky;
+      bottom: 1rem;
+      margin-top: 1.5rem;
+      padding: 0.9rem 1rem;
+      border-radius: 1rem;
+      background: #1a2233;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .pick strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Iconos existentes (Lucide)</h1>
+    <p class="sub">
+      No son dibujos míos: son SVG oficiales de
+      <a href="https://lucide.dev/icons/" target="_blank" rel="noreferrer">lucide.dev</a>
+      (mismo estilo trazo que el nav / logo de Finanzas).
+      Tocá uno y decime el nombre.
+    </p>
+
+    <div class="ref">
+      <img src="/logo.svg?v=8" alt="Logo actual" />
+      <p>
+        <strong>Referencia actual</strong><br />
+        Logo viejo de finanzas (billetera). El reemplazo va en este mismo formato de app icon.
+      </p>
+    </div>
+
+    <h2>Para logo (header / login)</h2>
+    <div class="grid" id="logos"></div>
+
+    <h2>Cómo se verían en el nav</h2>
+    <div class="grid" id="navs"></div>
+
+    <div class="pick" id="pick">Ninguno seleccionado todavía.</div>
+  </div>
+
+  <script>
+    // Iconos reales de Lucide vía CDN (lucide-static)
+    // Fuente: https://cdn.jsdelivr.net/npm/lucide-static@0.469.0/icons/{name}.svg
+    const CDN = 'https://cdn.jsdelivr.net/npm/lucide-static@0.469.0/icons';
+
+    const gymIcons = [
+      { name: 'dumbbell', label: 'Mancuerna' },
+      { name: 'activity', label: 'Actividad' },
+      { name: 'heart-pulse', label: 'Pulso' },
+      { name: 'timer', label: 'Timer' },
+      { name: 'trophy', label: 'Trofeo' },
+      { name: 'medal', label: 'Medalla' },
+      { name: 'flame', label: 'Fuego' },
+      { name: 'zap', label: 'Rayo' },
+      { name: 'target', label: 'Target' },
+      { name: 'gauge', label: 'Medidor' },
+      { name: 'person-standing', label: 'Persona' },
+      { name: 'bike', label: 'Bici' },
+      { name: 'footprints', label: 'Huellas' },
+      { name: 'mountain', label: 'Montaña' },
+      { name: 'stretch-horizontal', label: 'Stretch' },
+      { name: 'move', label: 'Move' },
+      { name: 'accessibility', label: 'Accesibilidad' },
+      { name: 'award', label: 'Award' },
+      { name: 'biceps-flexed', label: 'Bíceps' },
+      { name: 'anvil', label: 'Yunque' },
+    ];
+
+    let selected = null;
+
+    function url(name) {
+      return `${CDN}/${name}.svg`;
+    }
+
+    function render() {
+      const logos = document.getElementById('logos');
+      const navs = document.getElementById('navs');
+
+      logos.innerHTML = gymIcons.map((icon) => `
+        <button type="button" class="card ${selected === icon.name ? 'selected' : ''}" data-name="${icon.name}">
+          <div class="logo-preview">
+            <img src="${url(icon.name)}" alt="${icon.name}" loading="lazy"
+              onerror="this.closest('.card').style.display='none'" />
+          </div>
+          <div class="name">${icon.label}</div>
+          <div class="id">${icon.name}</div>
+        </button>
+      `).join('');
+
+      navs.innerHTML = gymIcons.map((icon) => `
+        <button type="button" class="card ${selected === icon.name ? 'selected' : ''}" data-name="${icon.name}">
+          <div class="nav-row">
+            <img src="${url(icon.name)}" alt="" loading="lazy"
+              onerror="this.closest('.card').style.display='none'" />
+            Gym11
+          </div>
+          <div class="name">${icon.label}</div>
+          <div class="id">${icon.name}</div>
+        </button>
+      `).join('');
+
+      document.querySelectorAll('[data-name]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          selected = btn.getAttribute('data-name');
+          document.getElementById('pick').innerHTML =
+            `Elegiste <strong>${selected}</strong> — decime ese nombre en el chat y lo dejo de logo.`;
+          render();
+        });
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>

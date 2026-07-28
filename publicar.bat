@@ -1,6 +1,8 @@
 @echo off
+REM Publicar Gym11 en Firebase Hosting (proyecto gym11-1111)
+cd /d "%~dp0"
 echo ========================================
-echo   Publicar Finanzas 11 en Firebase
+echo   Publicar Gym11 en Firebase
 echo ========================================
 echo.
 
@@ -14,7 +16,7 @@ if %errorlevel% neq 0 (
 echo.
 
 echo Paso 2: Desplegando en Firebase Hosting...
-firebase deploy --only hosting
+firebase deploy --only hosting --project gym11-1111
 if %errorlevel% neq 0 (
     echo ERROR: El despliegue fallo
     echo Asegurate de haber ejecutado: firebase login
@@ -24,11 +26,10 @@ if %errorlevel% neq 0 (
 echo.
 
 echo ========================================
-echo   ¡Publicacion completada!
+echo   Publicacion completada!
 echo ========================================
 echo.
-echo Tu aplicacion esta disponible en la URL que se mostro arriba.
-echo Puedes acceder desde cualquier dispositivo, incluyendo tu celular.
+echo URL: https://gym11-1111.web.app
+echo GitHub: https://github.com/Felipe-Monsegur/Gym11
 echo.
 pause
-

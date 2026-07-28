@@ -83,7 +83,7 @@ export default function NotAuthorized() {
       <div className="w-full max-w-md flex flex-col items-center">
         <div className="login-brand text-center mb-8 sm:mb-10">
           <img
-            src="/logo.svg?v=7"
+            src="/logo.svg?v=8"
             alt=""
             className="w-14 h-14 rounded-2xl mx-auto mb-4 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.55)] ring-1 ring-white/10"
           />

@@ -100,7 +100,7 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const headerBtn =
-    'px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center gap-1.5 text-white border border-white/10';
+    'h-9 sm:h-10 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center gap-1.5 text-white border border-white/10';
 
   return (
     <div className="min-h-screen">
@@ -114,7 +114,7 @@ export default function Layout({ children }: LayoutProps) {
               title="Ir al inicio"
             >
               <img
-                src="/logo.svg?v=7"
+                src="/logo.svg?v=8"
                 alt="Logo de Gym11"
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl shadow-md ring-1 ring-white/20"
               />
@@ -222,7 +222,6 @@ export default function Layout({ children }: LayoutProps) {
                     </g>
                   </svg>
                 )}
-                <span className="hidden sm:inline">{theme === 'dark' ? 'Oscuro' : 'Claro'}</span>
               </button>
               <button
                 onClick={() => setIsProfileModalOpen(true)}

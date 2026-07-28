@@ -8,7 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   setDoc,
   Timestamp,
   writeBatch,
@@ -322,13 +321,9 @@ export const reorderExercises = async (orderedIds: string[]): Promise<void> => {
 
 // ============ ENTRENAMIENTOS ============
 export const getWorkouts = async (userId: string): Promise<Workout[]> => {
-  const q = query(
-    collection(db, 'workouts'),
-    where('userId', '==', userId),
-    orderBy('date', 'desc')
-  );
+  const q = query(collection(db, 'workouts'), where('userId', '==', userId));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => {
+  const list = snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     return {
       id: docSnap.id,
@@ -338,6 +333,8 @@ export const getWorkouts = async (userId: string): Promise<Workout[]> => {
       exercises: data.exercises || [],
     };
   }) as Workout[];
+  list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return list;
 };
 
 export const addWorkout = async (workout: Omit<Workout, 'id' | 'createdAt'>): Promise<string> => {
@@ -363,13 +360,9 @@ export const deleteWorkout = async (id: string): Promise<void> => {
 
 // ============ PESO CORPORAL ============
 export const getBodyWeights = async (userId: string): Promise<BodyWeight[]> => {
-  const q = query(
-    collection(db, 'bodyWeights'),
-    where('userId', '==', userId),
-    orderBy('date', 'desc')
-  );
+  const q = query(collection(db, 'bodyWeights'), where('userId', '==', userId));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => {
+  const list = snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     return {
       id: docSnap.id,
@@ -378,6 +371,8 @@ export const getBodyWeights = async (userId: string): Promise<BodyWeight[]> => {
       createdAt: data.createdAt?.toDate?.().toISOString() || data.createdAt,
     };
   }) as BodyWeight[];
+  list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return list;
 };
 
 export const addBodyWeight = async (bodyWeight: Omit<BodyWeight, 'id' | 'createdAt'>): Promise<string> => {
