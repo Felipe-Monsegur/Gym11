@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { addWorkout, updateWorkout } from '../services/firebaseService';
 import { WorkoutExercise, WorkoutSet } from '../types';
 import Modal from '../components/Modal';
+import DateInput from '../components/DateInput';
 
 interface WorkoutExerciseForm extends WorkoutExercise {
   tempId: string;
@@ -335,12 +336,12 @@ export default function WorkoutForm() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="form-group mb-0">
               <label>Fecha</label>
-              <input
-                type="date"
+              <DateInput
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={setDate}
                 className="ui-input"
                 required
+                allowClear={false}
               />
             </div>
             <div className="form-group mb-0">

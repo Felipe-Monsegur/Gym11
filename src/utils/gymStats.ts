@@ -64,6 +64,20 @@ export function computeStreak(workouts: Workout[]): number {
   return streak;
 }
 
+/** Días desde el último entrenamiento (null si no hay ninguno). */
+export function daysSinceLastWorkout(workouts: Workout[], referenceDate: Date = new Date()): number | null {
+  if (workouts.length === 0) return null;
+  const latest = [...workouts].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))[0];
+  const last = new Date(latest.date + 'T12:00:00');
+  const today = new Date(referenceDate);
+  today.setHours(12, 0, 0, 0);
+  const diffMs = today.getTime() - last.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+/** Meta semanal por defecto para quien entrena 3–4 veces por semana. */
+export const DEFAULT_WEEKLY_GOAL = 4;
+
 export function maxWeightByExercise(
   workouts: Workout[]
 ): Map<string, { weight: number; reps: number; date: string }> {
@@ -105,6 +119,56 @@ export function getMonthlyVolumeData(workouts: Workout[], monthsBack: number = 6
     const monthName = d.toLocaleDateString('es-AR', { month: 'short' });
     const volume = monthlyVolume(workouts, d.getFullYear(), d.getMonth());
     result.push({ month: monthName, volume });
+  }
+
+  return result;
+}
+
+/** Inicio de semana (lunes) en YYYY-MM-DD, mediodía local para evitar desfaces. */
+function startOfWeekMonday(reference: Date): Date {
+  const d = new Date(reference);
+  d.setHours(12, 0, 0, 0);
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+function toDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Entrenamientos por semana (últimas `weeksBack` semanas, lunes–domingo). */
+export function getWeeklyWorkoutCounts(
+  workouts: Workout[],
+  weeksBack: number = 12
+): { week: string; weekKey: string; count: number }[] {
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const thisWeekStart = startOfWeekMonday(today);
+
+  const counts = new Map<string, number>();
+  for (const w of workouts) {
+    const workoutDay = new Date(w.date + 'T12:00:00');
+    const weekStart = startOfWeekMonday(workoutDay);
+    const key = toDateKey(weekStart);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+
+  const result: { week: string; weekKey: string; count: number }[] = [];
+  for (let i = weeksBack - 1; i >= 0; i--) {
+    const weekStart = new Date(thisWeekStart);
+    weekStart.setDate(weekStart.getDate() - i * 7);
+    const key = toDateKey(weekStart);
+    const label = weekStart.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+    result.push({
+      week: label,
+      weekKey: key,
+      count: counts.get(key) || 0,
+    });
   }
 
   return result;

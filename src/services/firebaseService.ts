@@ -11,6 +11,7 @@ import {
   setDoc,
   Timestamp,
   writeBatch,
+  deleteField,
 } from 'firebase/firestore';
 import { compareByDisplayOrder } from '../utils/displayOrder';
 import { db } from '../config/firebase';
@@ -338,18 +339,50 @@ export const getWorkouts = async (userId: string): Promise<Workout[]> => {
 };
 
 export const addWorkout = async (workout: Omit<Workout, 'id' | 'createdAt'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, 'workouts'), {
-    ...workout,
-    date: Timestamp.fromDate(new Date(workout.date)),
+  const payload: Record<string, unknown> = {
+    date: workout.date,
+    title: workout.title,
+    exercises: workout.exercises.map((ex) => {
+      const item: Record<string, unknown> = {
+        exerciseId: ex.exerciseId,
+        sets: ex.sets,
+      };
+      if (ex.notes?.trim()) item.notes = ex.notes.trim();
+      return item;
+    }),
+    userId: workout.userId,
     createdAt: Timestamp.now(),
-  });
+  };
+  if (workout.notes?.trim()) payload.notes = workout.notes.trim();
+  if (workout.durationMinutes != null && workout.durationMinutes > 0) {
+    payload.durationMinutes = workout.durationMinutes;
+  }
+  const docRef = await addDoc(collection(db, 'workouts'), payload);
   return docRef.id;
 };
 
 export const updateWorkout = async (id: string, updates: Partial<Workout>): Promise<void> => {
-  const updateData: Record<string, unknown> = { ...updates };
-  if (updates.date) {
-    updateData.date = Timestamp.fromDate(new Date(updates.date));
+  const updateData: Record<string, unknown> = {};
+  if (updates.date !== undefined) updateData.date = updates.date;
+  if (updates.title !== undefined) updateData.title = updates.title;
+  if (updates.exercises !== undefined) {
+    updateData.exercises = updates.exercises.map((ex) => {
+      const item: Record<string, unknown> = {
+        exerciseId: ex.exerciseId,
+        sets: ex.sets,
+      };
+      if (ex.notes?.trim()) item.notes = ex.notes.trim();
+      return item;
+    });
+  }
+  if (updates.notes !== undefined) {
+    updateData.notes = updates.notes.trim() ? updates.notes.trim() : deleteField();
+  }
+  if (updates.durationMinutes !== undefined) {
+    updateData.durationMinutes =
+      updates.durationMinutes != null && updates.durationMinutes > 0
+        ? updates.durationMinutes
+        : deleteField();
   }
   await updateDoc(doc(db, 'workouts', id), updateData);
 };
@@ -376,18 +409,25 @@ export const getBodyWeights = async (userId: string): Promise<BodyWeight[]> => {
 };
 
 export const addBodyWeight = async (bodyWeight: Omit<BodyWeight, 'id' | 'createdAt'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, 'bodyWeights'), {
-    ...bodyWeight,
-    date: Timestamp.fromDate(new Date(bodyWeight.date)),
+  const payload: Record<string, unknown> = {
+    date: bodyWeight.date,
+    weight: bodyWeight.weight,
+    userId: bodyWeight.userId,
     createdAt: Timestamp.now(),
-  });
+  };
+  if (bodyWeight.notes?.trim()) {
+    payload.notes = bodyWeight.notes.trim();
+  }
+  const docRef = await addDoc(collection(db, 'bodyWeights'), payload);
   return docRef.id;
 };
 
 export const updateBodyWeight = async (id: string, updates: Partial<BodyWeight>): Promise<void> => {
-  const updateData: Record<string, unknown> = { ...updates };
-  if (updates.date) {
-    updateData.date = Timestamp.fromDate(new Date(updates.date));
+  const updateData: Record<string, unknown> = {};
+  if (updates.date !== undefined) updateData.date = updates.date;
+  if (updates.weight !== undefined) updateData.weight = updates.weight;
+  if (updates.notes !== undefined) {
+    updateData.notes = updates.notes.trim() ? updates.notes.trim() : deleteField();
   }
   await updateDoc(doc(db, 'bodyWeights', id), updateData);
 };

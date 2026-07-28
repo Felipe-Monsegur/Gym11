@@ -7,6 +7,7 @@ import { addBodyWeight, updateBodyWeight, deleteBodyWeight } from '../services/f
 import { BodyWeight as BodyWeightType } from '../types';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
+import DateInput from '../components/DateInput';
 
 export default function BodyWeight() {
   const { user } = useAuth();
@@ -143,12 +144,12 @@ export default function BodyWeight() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="form-group">
             <label>Fecha</label>
-            <input
-              type="date"
+            <DateInput
               value={formData.date}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              onChange={(date) => setFormData({ ...formData, date })}
               className="ui-input"
               required
+              allowClear={false}
             />
           </div>
           <div className="form-group">

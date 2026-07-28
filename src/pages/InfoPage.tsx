@@ -52,9 +52,9 @@ export default function InfoPage() {
               </dd>
             </div>
             <div>
-              <dt className="font-semibold text-[var(--text)]">Racha</dt>
+              <dt className="font-semibold text-[var(--text)]">Meta semanal</dt>
               <dd className="text-[var(--text-muted)]">
-                Cantidad de días consecutivos con al menos un entrenamiento registrado.
+                Cuántos entrenamientos hiciste esta semana sobre una meta de 4 (pensado para 3–4 días por semana, no todos los días).
               </dd>
             </div>
             <div>

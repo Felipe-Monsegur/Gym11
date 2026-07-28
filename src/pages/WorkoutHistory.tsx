@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { deleteWorkout } from '../services/firebaseService';
 import { workoutVolume, formatVolume } from '../utils/gymStats';
 import ConfirmModal from '../components/ConfirmModal';
+import DateInput from '../components/DateInput';
 
 export default function WorkoutHistory() {
   const { workouts, exercises, muscleGroups, loading, refresh } = useData();
@@ -111,20 +112,20 @@ export default function WorkoutHistory() {
             </div>
             <div className="form-group mb-0">
               <label className="text-xs">Desde</label>
-              <input
-                type="date"
+              <DateInput
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                onChange={setDateFrom}
                 className="ui-input text-sm"
+                allowClear
               />
             </div>
             <div className="form-group mb-0">
               <label className="text-xs">Hasta</label>
-              <input
-                type="date"
+              <DateInput
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                onChange={setDateTo}
                 className="ui-input text-sm"
+                allowClear
               />
             </div>
           </div>

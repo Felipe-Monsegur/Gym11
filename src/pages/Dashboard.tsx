@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useTheme } from '../context/ThemeContext';
-import { weekWorkouts, workoutVolume, computeStreak, formatVolume } from '../utils/gymStats';
+import { weekWorkouts, workoutVolume, daysSinceLastWorkout, formatVolume, DEFAULT_WEEKLY_GOAL } from '../utils/gymStats';
 
 export default function Dashboard() {
   const { workouts, exercises, muscleGroups, loading } = useData();
@@ -14,7 +14,8 @@ export default function Dashboard() {
     return thisWeekWorkouts.reduce((total, w) => total + workoutVolume(w), 0);
   }, [thisWeekWorkouts]);
 
-  const streak = useMemo(() => computeStreak(workouts), [workouts]);
+  const daysSince = useMemo(() => daysSinceLastWorkout(workouts), [workouts]);
+  const weeklyGoal = DEFAULT_WEEKLY_GOAL;
 
   const last5Workouts = useMemo(() => workouts.slice(0, 5), [workouts]);
 
@@ -57,11 +58,14 @@ export default function Dashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="ui-panel p-4">
-          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Esta semana</div>
+          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Meta semanal</div>
           <div className="text-2xl sm:text-3xl font-bold text-[var(--text)]">
             {thisWeekWorkouts.length}
+            <span className="text-lg sm:text-xl font-semibold text-[var(--text-muted)]">/{weeklyGoal}</span>
           </div>
-          <div className="text-xs text-[var(--text-muted)]">entrenamientos</div>
+          <div className="text-xs text-[var(--text-muted)]">
+            {thisWeekWorkouts.length >= weeklyGoal ? 'cumplida' : 'entrenamientos'}
+          </div>
         </div>
 
         <div className="ui-panel p-4">
@@ -73,11 +77,19 @@ export default function Dashboard() {
         </div>
 
         <div className="ui-panel p-4">
-          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Racha actual</div>
+          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Último</div>
           <div className="text-2xl sm:text-3xl font-bold text-[var(--text)]">
-            {streak}
+            {daysSince === null ? '—' : daysSince === 0 ? 'Hoy' : daysSince}
           </div>
-          <div className="text-xs text-[var(--text-muted)]">días seguidos</div>
+          <div className="text-xs text-[var(--text-muted)]">
+            {daysSince === null
+              ? 'sin registros'
+              : daysSince === 0
+                ? 'entrenaste'
+                : daysSince === 1
+                  ? 'día atrás'
+                  : 'días atrás'}
+          </div>
         </div>
 
         <div className="ui-panel p-4">

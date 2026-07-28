@@ -1,7 +1,14 @@
 import { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useTheme } from '../context/ThemeContext';
-import { getMonthlyVolumeData, maxWeightByExercise, formatVolume, formatWeight } from '../utils/gymStats';
+import {
+  getMonthlyVolumeData,
+  getWeeklyWorkoutCounts,
+  maxWeightByExercise,
+  formatVolume,
+  formatWeight,
+  DEFAULT_WEEKLY_GOAL,
+} from '../utils/gymStats';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -12,11 +19,16 @@ import {
   Tooltip,
   LineChart,
   Line,
+  BarChart,
+  Bar,
+  ReferenceLine,
 } from 'recharts';
 
 export default function Progress() {
   const { workouts, exercises, bodyWeights, loading } = useData();
   const { theme, headerColor } = useTheme();
+
+  const weeklyWorkoutsData = useMemo(() => getWeeklyWorkoutCounts(workouts, 12), [workouts]);
 
   const volumeData = useMemo(() => getMonthlyVolumeData(workouts, 6), [workouts]);
 
@@ -49,10 +61,23 @@ export default function Progress() {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-30)
       .map((bw) => ({
-        date: new Date(bw.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
+        date: new Date(bw.date + 'T12:00:00').toLocaleDateString('es-AR', {
+          day: 'numeric',
+          month: 'short',
+        }),
         weight: bw.weight,
       }));
   }, [bodyWeights]);
+
+  const axisTick = { fill: theme === 'dark' ? '#9ca3af' : '#6b7280', fontSize: 12 };
+  const axisLine = { stroke: theme === 'dark' ? '#374151' : '#e5e7eb' };
+  const gridStroke = theme === 'dark' ? '#374151' : '#e5e7eb';
+  const tooltipStyle = {
+    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+    border: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+    borderRadius: '8px',
+    color: theme === 'dark' ? '#f3f4f6' : '#1f2937',
+  };
 
   if (loading) {
     return (
@@ -67,6 +92,46 @@ export default function Progress() {
       <h1 className={`text-xl sm:text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
         Progreso
       </h1>
+
+      {/* Workouts per week */}
+      <div className="ui-panel p-4 sm:p-6">
+        <h2 className="ui-label ui-label-lg mb-1">Entrenamientos por semana</h2>
+        <p className="text-xs text-[var(--text-muted)] mb-4">
+          Últimas 12 semanas · meta {DEFAULT_WEEKLY_GOAL}/semana
+        </p>
+        {weeklyWorkoutsData.every((d) => d.count === 0) ? (
+          <div className="text-center py-8 text-[var(--text-muted)]">
+            No hay entrenamientos para mostrar
+          </div>
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklyWorkoutsData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="week" tick={axisTick} axisLine={axisLine} interval="preserveStartEnd" />
+                <YAxis
+                  allowDecimals={false}
+                  domain={[0, (dataMax: number) => Math.max(dataMax, DEFAULT_WEEKLY_GOAL)]}
+                  tick={axisTick}
+                  axisLine={axisLine}
+                  width={28}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value: number) => [value, 'Entrenamientos']}
+                  labelFormatter={(label) => `Semana del ${label}`}
+                />
+                <ReferenceLine
+                  y={DEFAULT_WEEKLY_GOAL}
+                  stroke={theme === 'dark' ? '#64748b' : '#94a3b8'}
+                  strokeDasharray="4 4"
+                />
+                <Bar dataKey="count" fill={headerColor} radius={[6, 6, 0, 0]} maxBarSize={36} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
 
       {/* Monthly Volume Chart */}
       <div className="ui-panel p-4 sm:p-6">
@@ -85,28 +150,16 @@ export default function Progress() {
                     <stop offset="95%" stopColor={headerColor} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke={theme === 'dark' ? '#374151' : '#e5e7eb'}
-                />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fill: theme === 'dark' ? '#9ca3af' : '#6b7280', fontSize: 12 }}
-                  axisLine={{ stroke: theme === 'dark' ? '#374151' : '#e5e7eb' }}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="month" tick={axisTick} axisLine={axisLine} />
                 <YAxis
                   tickFormatter={(v) => formatVolume(v)}
-                  tick={{ fill: theme === 'dark' ? '#9ca3af' : '#6b7280', fontSize: 12 }}
-                  axisLine={{ stroke: theme === 'dark' ? '#374151' : '#e5e7eb' }}
+                  tick={axisTick}
+                  axisLine={axisLine}
                   width={60}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                    border: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
-                    borderRadius: '8px',
-                    color: theme === 'dark' ? '#f3f4f6' : '#1f2937',
-                  }}
+                  contentStyle={tooltipStyle}
                   formatter={(value: number) => [formatVolume(value), 'Volumen']}
                 />
                 <Area
@@ -133,29 +186,17 @@ export default function Progress() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={bodyWeightData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke={theme === 'dark' ? '#374151' : '#e5e7eb'}
-                />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: theme === 'dark' ? '#9ca3af' : '#6b7280', fontSize: 12 }}
-                  axisLine={{ stroke: theme === 'dark' ? '#374151' : '#e5e7eb' }}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="date" tick={axisTick} axisLine={axisLine} />
                 <YAxis
                   domain={['dataMin - 2', 'dataMax + 2']}
                   tickFormatter={(v) => `${v} kg`}
-                  tick={{ fill: theme === 'dark' ? '#9ca3af' : '#6b7280', fontSize: 12 }}
-                  axisLine={{ stroke: theme === 'dark' ? '#374151' : '#e5e7eb' }}
+                  tick={axisTick}
+                  axisLine={axisLine}
                   width={60}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                    border: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
-                    borderRadius: '8px',
-                    color: theme === 'dark' ? '#f3f4f6' : '#1f2937',
-                  }}
+                  contentStyle={tooltipStyle}
                   formatter={(value: number) => [`${value} kg`, 'Peso']}
                 />
                 <Line
@@ -205,7 +246,7 @@ export default function Progress() {
                   <div className="min-w-0">
                     <div className="font-medium text-[var(--text)] truncate">{pr.exerciseName}</div>
                     <div className="text-xs text-[var(--text-muted)]">
-                      {new Date(pr.date).toLocaleDateString('es-AR', {
+                      {new Date(pr.date + 'T12:00:00').toLocaleDateString('es-AR', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
