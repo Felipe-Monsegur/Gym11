@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function userEmail() {
+      return request.auth.token.email != null ? request.auth.token.email.lower() : '';
+    }
+
+    // Debe coincidir con src/config/admins.ts
+    function isConfiguredAdmin() {
+      return userEmail() == 'felipemonsegur@gmail.com';
+    }
+
+    function isAdmin() {
+      return isAuthenticated()
+        && (isConfiguredAdmin()
+            || (exists(/databases/$(database)/documents/allowedUsers/$(request.auth.uid))
+                && get(/databases/$(database)/documents/allowedUsers/$(request.auth.uid)).data.isAdmin == true)
+            || (userEmail() != ''
+                && exists(/databases/$(database)/documents/allowedUsers/$(userEmail()))
+                && get(/databases/$(database)/documents/allowedUsers/$(userEmail())).data.isAdmin == true));
+    }
+
+    function isUserAllowed() {
+      return isAuthenticated()
+        && (isConfiguredAdmin()
+            || exists(/databases/$(database)/documents/allowedUsers/$(request.auth.uid))
+            || (userEmail() != ''
+                && exists(/databases/$(database)/documents/allowedUsers/$(userEmail()))));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /allowedUsers/{userId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId
+        || userId == userEmail()
+        || (resource != null && resource.data.email == userEmail())
+        || isAdmin()
+      );
+      allow create: if isAdmin()
+        || (isAuthenticated()
+            && request.auth.uid == userId
+            && userEmail() != ''
+            && exists(/databases/$(database)/documents/allowedUsers/$(userEmail()))
+            && request.resource.data.email == userEmail()
+            && request.resource.data.userId == request.auth.uid)
+        || (isAuthenticated()
+            && userId == userEmail()
+            && request.resource.data.email == userEmail()
+            && exists(/databases/$(database)/documents/allowedUsers/$(request.auth.uid)));
+      allow update, delete: if isAdmin();
+    }
+
+    match /accessRequests/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      allow create: if isAuthenticated()
+        && request.auth.uid == uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasAll(['email', 'status', 'createdAt', 'updatedAt']);
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == uid
+          && request.resource.data.status == 'pending'
+          && resource.data.status in ['pending', 'denied'])
+        || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /muscleGroups/{muscleGroupId} {
+      allow read, write: if isUserAllowed() && isOwner(resource.data.userId);
+      allow create: if isUserAllowed() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /exercises/{exerciseId} {
+      allow read, write: if isUserAllowed() && isOwner(resource.data.userId);
+      allow create: if isUserAllowed() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /workouts/{workoutId} {
+      allow read, write: if isUserAllowed() && isOwner(resource.data.userId);
+      allow create: if isUserAllowed() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /bodyWeights/{bodyWeightId} {
+      allow read, write: if isUserAllowed() && isOwner(resource.data.userId);
+      allow create: if isUserAllowed() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /userSettings/{userId} {
+      allow read, write: if isUserAllowed() && isOwner(userId);
+    }
+  }
+}

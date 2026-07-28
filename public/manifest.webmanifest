@@ -1,0 +1,28 @@
+{
+  "name": "Gym11",
+  "short_name": "Gym11",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#131924",
+  "theme_color": "#131924",
+  "icons": [
+    {
+      "src": "/img/icons/icon-192.png?v=7",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/img/icons/icon-512.png?v=7",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png?v=7",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

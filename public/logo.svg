@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Finanzas 11">
+  <rect width="512" height="512" fill="#131924"/>
+  <!-- ~90% del tamaño anterior, centrado (centro geométrico 12,13) -->
+  <g
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    transform="translate(67 51.25) scale(15.75)"
+  >
+    <rect x="2" y="6" width="20" height="14" rx="2"/>
+    <path d="M2 10h20"/>
+    <path d="M16 14h.01"/>
+  </g>
+</svg>
