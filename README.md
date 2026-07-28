@@ -3,7 +3,7 @@
 App web para registrar entrenamientos de gimnasio: ejercicios, series, repeticiones, peso, progreso y peso corporal, con sincronización en Firebase.
 
 **Proyecto Firebase:** `gym11-1111`  
-**Hosting (cuando publiques):** [https://gym11-1111.web.app](https://gym11-1111.web.app)
+**Hosting:** [https://gym11-1111.web.app](https://gym11-1111.web.app)
 
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
