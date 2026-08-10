@@ -4,7 +4,7 @@ import { useData } from '../context/DataContext';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { deleteWorkout } from '../services/firebaseService';
-import { workoutVolume, formatVolume } from '../utils/gymStats';
+import { workoutVolume, formatVolume, getCardioExerciseIds } from '../utils/gymStats';
 import ConfirmModal from '../components/ConfirmModal';
 import DateInput from '../components/DateInput';
 
@@ -20,6 +20,11 @@ export default function WorkoutHistory() {
     workoutId: string;
     workoutTitle: string;
   }>({ isOpen: false, workoutId: '', workoutTitle: '' });
+
+  const cardioExerciseIds = useMemo(
+    () => getCardioExerciseIds(exercises, muscleGroups),
+    [exercises, muscleGroups]
+  );
 
   const filteredWorkouts = useMemo(() => {
     return workouts.filter((w) => {
@@ -170,7 +175,7 @@ export default function WorkoutHistory() {
           ) : (
             <div className="space-y-3">
               {filteredWorkouts.map((workout) => {
-                const volume = workoutVolume(workout);
+                const volume = workoutVolume(workout, cardioExerciseIds);
                 const exerciseCount = workout.exercises.length;
                 const uniqueMuscleGroups = [
                   ...new Set(

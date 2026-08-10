@@ -36,3 +36,18 @@ export function compareByDisplayOrder(a: SortableEntity, b: SortableEntity): num
 export function sortByDisplayOrder<T extends SortableEntity>(items: T[]): T[] {
   return [...items].sort(compareByDisplayOrder);
 }
+
+/** Ordena ejercicios por orden del grupo muscular y luego por sortOrder del ejercicio. */
+export function sortExercisesByMuscleGroup<
+  T extends SortableEntity & { muscleGroupId: string },
+>(exercises: T[], muscleGroups: SortableEntity[]): T[] {
+  const groupOrder = new Map(
+    sortByDisplayOrder(muscleGroups).map((g, index) => [g.id, index])
+  );
+  return [...exercises].sort((a, b) => {
+    const ga = groupOrder.get(a.muscleGroupId) ?? Number.MAX_SAFE_INTEGER;
+    const gb = groupOrder.get(b.muscleGroupId) ?? Number.MAX_SAFE_INTEGER;
+    if (ga !== gb) return ga - gb;
+    return compareByDisplayOrder(a, b);
+  });
+}

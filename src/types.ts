@@ -1,3 +1,5 @@
+export type TrackingMode = 'strength' | 'cardio';
+
 export interface MuscleGroup {
   id: string;
   name: string;
@@ -5,6 +7,8 @@ export interface MuscleGroup {
   userId: string;
   createdAt: string;
   sortOrder?: number;
+  /** strength = reps × kg; cardio = reps × minutos */
+  trackingMode?: TrackingMode;
 }
 
 export interface Exercise {
@@ -20,7 +24,9 @@ export interface Exercise {
 
 export interface WorkoutSet {
   reps: number;
-  weight: number; // kg
+  weight: number; // kg (fuerza)
+  /** Minutos por serie (cardio) */
+  durationMinutes?: number;
   completed?: boolean;
 }
 

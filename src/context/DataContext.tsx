@@ -5,6 +5,10 @@ import {
   getExercises,
   getWorkouts,
   getBodyWeights,
+  ensureInitialPack,
+  getUserSettings,
+  saveUserSettings,
+  INITIAL_PACK_VERSION,
 } from '../services/firebaseService';
 import { MuscleGroup, Exercise, Workout, BodyWeight } from '../types';
 
@@ -29,7 +33,7 @@ const DataContext = createContext<DataContextType>({
 export const useData = () => useContext(DataContext);
 
 export const DataProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth();
+  const { user, isAllowed, checkingAccess, loading: authLoading } = useAuth();
   const [muscleGroups, setMuscleGroups] = useState<MuscleGroup[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -37,7 +41,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
-    if (!user) {
+    if (!user || !isAllowed) {
       setMuscleGroups([]);
       setExercises([]);
       setWorkouts([]);
@@ -48,6 +52,24 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
     setLoading(true);
     try {
+      // Primero el pack (cuenta nueva / faltantes), después leer todo.
+      try {
+        const settings = await getUserSettings(user.uid).catch(() => null);
+        const packVersion = settings?.initialPackVersion ?? 0;
+        if (packVersion < INITIAL_PACK_VERSION) {
+          await ensureInitialPack(user.uid);
+          await saveUserSettings(user.uid, { initialPackVersion: INITIAL_PACK_VERSION });
+        } else {
+          // Aun con versión al día, si no hay grupos (borró todo o falló un seed previo) reponer pack.
+          const currentGroups = await getMuscleGroups(user.uid);
+          if (currentGroups.length === 0) {
+            await ensureInitialPack(user.uid);
+          }
+        }
+      } catch (err) {
+        console.error('Error ensuring initial pack:', err);
+      }
+
       const [groups, exs, wks, bws] = await Promise.all([
         getMuscleGroups(user.uid).catch((err) => {
           console.error('Error loading muscleGroups:', err);
@@ -67,6 +89,25 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         }),
       ]);
 
+      // Último recurso: si sigue vacío, reintentar pack una vez.
+      if (groups.length === 0) {
+        try {
+          await ensureInitialPack(user.uid);
+          await saveUserSettings(user.uid, { initialPackVersion: INITIAL_PACK_VERSION });
+          const [retryGroups, retryExs] = await Promise.all([
+            getMuscleGroups(user.uid),
+            getExercises(user.uid),
+          ]);
+          setMuscleGroups(retryGroups);
+          setExercises(retryExs);
+          setWorkouts(wks);
+          setBodyWeights(bws);
+          return;
+        } catch (err) {
+          console.error('Error retrying initial pack:', err);
+        }
+      }
+
       setMuscleGroups(groups);
       setExercises(exs);
       setWorkouts(wks);
@@ -79,8 +120,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    loadData();
-  }, [user]);
+    if (authLoading || checkingAccess) {
+      setLoading(true);
+      return;
+    }
+    void loadData();
+  }, [user, isAllowed, authLoading, checkingAccess]);
 
   return (
     <DataContext.Provider

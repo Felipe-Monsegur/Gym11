@@ -16,7 +16,7 @@ export default function InfoPage() {
           </h2>
           <p className="text-[var(--text-muted)] text-sm leading-relaxed">
             Esta app te permite llevar un registro completo de tus entrenamientos de gimnasio.
-            Registrá ejercicios, series, repeticiones y peso para hacer seguimiento de tu progreso.
+            Al empezar ya tenés un pack de grupos y ejercicios; registrá series con reps y peso (o minutos en cardio).
           </p>
         </section>
 
@@ -26,13 +26,13 @@ export default function InfoPage() {
           </h2>
           <ol className="list-decimal list-inside space-y-2 text-[var(--text-muted)] text-sm">
             <li>
-              <strong className="text-[var(--text)]">Creá grupos musculares</strong> — En Gestión, agregá los grupos (Pecho, Espalda, Piernas, etc.)
+              <strong className="text-[var(--text)]">Pack inicial</strong> — Al entrar por primera vez se cargan grupos (Pecho, Espalda, Cardio, etc.) y ejercicios base
             </li>
             <li>
-              <strong className="text-[var(--text)]">Agregá ejercicios</strong> — Asociá cada ejercicio a un grupo muscular (Press banca → Pecho)
+              <strong className="text-[var(--text)]">Personalizá en Gestión</strong> — Agregá, editá o reordená grupos y ejercicios; marcá un grupo como cardio si hace falta
             </li>
             <li>
-              <strong className="text-[var(--text)]">Registrá entrenamientos</strong> — Seleccioná ejercicios, agregá series con reps y peso
+              <strong className="text-[var(--text)]">Registrá entrenamientos</strong> — Fuerza: series con reps y kg. Cardio: series con reps y minutos
             </li>
             <li>
               <strong className="text-[var(--text)]">Seguí tu progreso</strong> — Mirá gráficos de volumen y tus récords personales
@@ -48,19 +48,25 @@ export default function InfoPage() {
             <div>
               <dt className="font-semibold text-[var(--text)]">Volumen</dt>
               <dd className="text-[var(--text-muted)]">
-                Suma de (repeticiones × peso) de todas las series. Indica el trabajo total realizado.
+                Suma de (repeticiones × peso) de las series de fuerza. El cardio no suma al volumen en kg.
               </dd>
             </div>
             <div>
-              <dt className="font-semibold text-[var(--text)]">Meta semanal</dt>
+              <dt className="font-semibold text-[var(--text)]">Cardio</dt>
               <dd className="text-[var(--text-muted)]">
-                Cuántos entrenamientos hiciste esta semana sobre una meta de 4 (pensado para 3–4 días por semana, no todos los días).
+                Grupos marcados como cardio se miden en repeticiones y minutos, sin peso en kg.
+              </dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-[var(--text)]">Esta semana</dt>
+              <dd className="text-[var(--text-muted)]">
+                Cuántos entrenamientos registraste desde el lunes hasta hoy.
               </dd>
             </div>
             <div>
               <dt className="font-semibold text-[var(--text)]">PR (Récord Personal)</dt>
               <dd className="text-[var(--text-muted)]">
-                El peso máximo que levantaste en un ejercicio específico.
+                El peso máximo que levantaste en un ejercicio de fuerza específico.
               </dd>
             </div>
           </dl>

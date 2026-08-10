@@ -2,20 +2,30 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useTheme } from '../context/ThemeContext';
-import { weekWorkouts, workoutVolume, daysSinceLastWorkout, formatVolume, DEFAULT_WEEKLY_GOAL } from '../utils/gymStats';
+import {
+  weekWorkouts,
+  workoutVolume,
+  daysSinceLastWorkout,
+  formatVolume,
+  getCardioExerciseIds,
+} from '../utils/gymStats';
 
 export default function Dashboard() {
   const { workouts, exercises, muscleGroups, loading } = useData();
   const { theme, headerColor } = useTheme();
 
+  const cardioExerciseIds = useMemo(
+    () => getCardioExerciseIds(exercises, muscleGroups),
+    [exercises, muscleGroups]
+  );
+
   const thisWeekWorkouts = useMemo(() => weekWorkouts(workouts), [workouts]);
 
   const weeklyVolume = useMemo(() => {
-    return thisWeekWorkouts.reduce((total, w) => total + workoutVolume(w), 0);
-  }, [thisWeekWorkouts]);
+    return thisWeekWorkouts.reduce((total, w) => total + workoutVolume(w, cardioExerciseIds), 0);
+  }, [thisWeekWorkouts, cardioExerciseIds]);
 
   const daysSince = useMemo(() => daysSinceLastWorkout(workouts), [workouts]);
-  const weeklyGoal = DEFAULT_WEEKLY_GOAL;
 
   const last5Workouts = useMemo(() => workouts.slice(0, 5), [workouts]);
 
@@ -58,13 +68,12 @@ export default function Dashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="ui-panel p-4">
-          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Meta semanal</div>
+          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Esta semana</div>
           <div className="text-2xl sm:text-3xl font-bold text-[var(--text)]">
             {thisWeekWorkouts.length}
-            <span className="text-lg sm:text-xl font-semibold text-[var(--text-muted)]">/{weeklyGoal}</span>
           </div>
           <div className="text-xs text-[var(--text-muted)]">
-            {thisWeekWorkouts.length >= weeklyGoal ? 'cumplida' : 'entrenamientos'}
+            {thisWeekWorkouts.length === 1 ? 'entrenamiento' : 'entrenamientos'}
           </div>
         </div>
 
@@ -133,7 +142,7 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-3">
             {last5Workouts.map((workout) => {
-              const volume = workoutVolume(workout);
+              const volume = workoutVolume(workout, cardioExerciseIds);
               const exerciseCount = workout.exercises.length;
               const uniqueMuscleGroups = [
                 ...new Set(
@@ -204,36 +213,23 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Quick Setup */}
+      {/* Fallback si el pack inicial no se pudo cargar */}
       {(muscleGroups.length === 0 || exercises.length === 0) && (
         <div className="ui-panel p-4 sm:p-6 border-2 border-dashed border-[var(--border-strong)]">
           <h2 className="ui-label ui-label-lg mb-3">Configuración inicial</h2>
           <p className="text-sm text-[var(--text-muted)] mb-4">
-            Para empezar a registrar entrenamientos, primero necesitás crear algunos grupos musculares y ejercicios.
+            Los usuarios nuevos reciben un pack de grupos y ejercicios automáticamente. Si no aparecen, crealos en Gestión.
           </p>
           <div className="flex flex-wrap gap-2">
-            {muscleGroups.length === 0 && (
-              <Link
-                to="/gestion"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90 bg-blue-600"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Crear grupos musculares
-              </Link>
-            )}
-            {muscleGroups.length > 0 && exercises.length === 0 && (
-              <Link
-                to="/gestion"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90 bg-green-600"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Crear ejercicios
-              </Link>
-            )}
+            <Link
+              to="/gestion"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90 bg-blue-600"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Ir a Gestión
+            </Link>
           </div>
         </div>
       )}

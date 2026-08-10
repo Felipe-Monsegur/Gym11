@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { addWorkout, updateWorkout } from '../services/firebaseService';
 import { WorkoutExercise, WorkoutSet } from '../types';
+import { sortByDisplayOrder, sortExercisesByMuscleGroup } from '../utils/displayOrder';
 import Modal from '../components/Modal';
 import DateInput from '../components/DateInput';
 
@@ -54,7 +55,7 @@ export default function WorkoutForm() {
   }, [existingWorkout]);
 
   const filteredExercises = useMemo(() => {
-    let filtered = exercises;
+    let filtered = sortExercisesByMuscleGroup(exercises, muscleGroups);
     if (selectedMuscleGroup) {
       filtered = filtered.filter((e) => e.muscleGroupId === selectedMuscleGroup);
     }
@@ -63,7 +64,12 @@ export default function WorkoutForm() {
       filtered = filtered.filter((e) => e.name.toLowerCase().includes(q));
     }
     return filtered;
-  }, [exercises, selectedMuscleGroup, exerciseSearch]);
+  }, [exercises, muscleGroups, selectedMuscleGroup, exerciseSearch]);
+
+  const muscleGroupsSorted = useMemo(
+    () => sortByDisplayOrder(muscleGroups),
+    [muscleGroups]
+  );
 
   const getExerciseName = (exerciseId: string) => {
     const exercise = exercises.find((e) => e.id === exerciseId);
@@ -72,12 +78,28 @@ export default function WorkoutForm() {
 
   const getExerciseColor = (exerciseId: string) => {
     const exercise = exercises.find((e) => e.id === exerciseId);
-    return exercise?.color || '#6b7280';
+    if (!exercise) return '#6b7280';
+    const group = muscleGroups.find((g) => g.id === exercise.muscleGroupId);
+    return group?.color || exercise.color || '#6b7280';
   };
 
   const getMuscleGroupName = (muscleGroupId: string) => {
     const group = muscleGroups.find((g) => g.id === muscleGroupId);
     return group?.name || '';
+  };
+
+  const isCardioExercise = (exerciseId: string) => {
+    const exercise = exercises.find((e) => e.id === exerciseId);
+    if (!exercise) return false;
+    const group = muscleGroups.find((g) => g.id === exercise.muscleGroupId);
+    return group?.trackingMode === 'cardio';
+  };
+
+  const defaultSetForExercise = (exerciseId: string): WorkoutSet => {
+    if (isCardioExercise(exerciseId)) {
+      return { reps: 10, weight: 0, durationMinutes: 10, completed: false };
+    }
+    return { reps: 10, weight: 0, completed: false };
   };
 
   const addExerciseToWorkout = (exerciseId: string) => {
@@ -87,7 +109,7 @@ export default function WorkoutForm() {
     const newExercise: WorkoutExerciseForm = {
       tempId: `new-${Date.now()}`,
       exerciseId,
-      sets: [{ reps: 10, weight: 0, completed: false }],
+      sets: [defaultSetForExercise(exerciseId)],
       notes: '',
     };
     setWorkoutExercises([...workoutExercises, newExercise]);
@@ -105,12 +127,22 @@ export default function WorkoutForm() {
       workoutExercises.map((e) => {
         if (e.tempId === tempId) {
           const lastSet = e.sets[e.sets.length - 1];
+          const cardio = isCardioExercise(e.exerciseId);
+          const nextSet: WorkoutSet = cardio
+            ? {
+                reps: lastSet?.reps || 10,
+                weight: 0,
+                durationMinutes: lastSet?.durationMinutes ?? 10,
+                completed: false,
+              }
+            : {
+                reps: lastSet?.reps || 10,
+                weight: lastSet?.weight || 0,
+                completed: false,
+              };
           return {
             ...e,
-            sets: [
-              ...e.sets,
-              { reps: lastSet?.reps || 10, weight: lastSet?.weight || 0, completed: false },
-            ],
+            sets: [...e.sets, nextSet],
           };
         }
         return e;
@@ -265,7 +297,7 @@ export default function WorkoutForm() {
                 className="ui-input text-sm"
               >
                 <option value="">Todos</option>
-                {muscleGroups.map((g) => (
+                {muscleGroupsSorted.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.name}
                   </option>
@@ -298,7 +330,7 @@ export default function WorkoutForm() {
                   >
                     <div
                       className="w-3 h-3 rounded-full shrink-0"
-                      style={{ backgroundColor: exercise.color }}
+                      style={{ backgroundColor: getExerciseColor(exercise.id) }}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-[var(--text)] truncate">{exercise.name}</div>
@@ -467,58 +499,122 @@ export default function WorkoutForm() {
 
                   {/* Sets */}
                   <div className="p-4 space-y-2">
-                    <div className="grid grid-cols-12 gap-2 text-xs font-medium text-[var(--text-muted)] px-1">
-                      <div className="col-span-1">#</div>
-                      <div className="col-span-4">Reps</div>
-                      <div className="col-span-5">Peso (kg)</div>
-                      <div className="col-span-2"></div>
-                    </div>
-                    {we.sets.map((set, setIndex) => (
-                      <div key={setIndex} className="grid grid-cols-12 gap-2 items-center">
-                        <div className="col-span-1 text-sm text-[var(--text-muted)]">{setIndex + 1}</div>
-                        <div className="col-span-4">
-                          <input
-                            type="number"
-                            value={set.reps}
-                            onChange={(e) =>
-                              updateSet(we.tempId, setIndex, 'reps', parseInt(e.target.value) || 0)
-                            }
-                            min="0"
-                            className="ui-input text-sm py-1.5"
-                          />
+                    {isCardioExercise(we.exerciseId) ? (
+                      <>
+                        <div className="grid grid-cols-12 gap-2 text-xs font-medium text-[var(--text-muted)] px-1">
+                          <div className="col-span-1">#</div>
+                          <div className="col-span-4">Reps</div>
+                          <div className="col-span-5">Minutos</div>
+                          <div className="col-span-2"></div>
                         </div>
-                        <div className="col-span-5">
-                          <input
-                            type="number"
-                            value={set.weight}
-                            onChange={(e) =>
-                              updateSet(we.tempId, setIndex, 'weight', parseFloat(e.target.value) || 0)
-                            }
-                            min="0"
-                            step="0.5"
-                            className="ui-input text-sm py-1.5"
-                          />
+                        {we.sets.map((set, setIndex) => (
+                          <div key={setIndex} className="grid grid-cols-12 gap-2 items-center">
+                            <div className="col-span-1 text-sm text-[var(--text-muted)]">{setIndex + 1}</div>
+                            <div className="col-span-4">
+                              <input
+                                type="number"
+                                value={set.reps}
+                                onChange={(e) =>
+                                  updateSet(we.tempId, setIndex, 'reps', parseInt(e.target.value) || 0)
+                                }
+                                min="0"
+                                className="ui-input text-sm py-1.5"
+                              />
+                            </div>
+                            <div className="col-span-5">
+                              <input
+                                type="number"
+                                value={set.durationMinutes ?? 0}
+                                onChange={(e) =>
+                                  updateSet(
+                                    we.tempId,
+                                    setIndex,
+                                    'durationMinutes',
+                                    parseFloat(e.target.value) || 0
+                                  )
+                                }
+                                min="0"
+                                step="0.5"
+                                className="ui-input text-sm py-1.5"
+                              />
+                            </div>
+                            <div className="col-span-2 flex justify-end">
+                              {we.sets.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeSet(we.tempId, setIndex)}
+                                  className={`p-1 rounded transition-colors ${
+                                    theme === 'dark'
+                                      ? 'text-red-400 hover:bg-red-500/20'
+                                      : 'text-red-600 hover:bg-red-100'
+                                  }`}
+                                  title="Quitar serie"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-12 gap-2 text-xs font-medium text-[var(--text-muted)] px-1">
+                          <div className="col-span-1">#</div>
+                          <div className="col-span-4">Reps</div>
+                          <div className="col-span-5">Peso (kg)</div>
+                          <div className="col-span-2"></div>
                         </div>
-                        <div className="col-span-2 flex justify-end">
-                          {we.sets.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeSet(we.tempId, setIndex)}
-                              className={`p-1 rounded transition-colors ${
-                                theme === 'dark'
-                                  ? 'text-red-400 hover:bg-red-500/20'
-                                  : 'text-red-600 hover:bg-red-100'
-                              }`}
-                              title="Quitar serie"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                        {we.sets.map((set, setIndex) => (
+                          <div key={setIndex} className="grid grid-cols-12 gap-2 items-center">
+                            <div className="col-span-1 text-sm text-[var(--text-muted)]">{setIndex + 1}</div>
+                            <div className="col-span-4">
+                              <input
+                                type="number"
+                                value={set.reps}
+                                onChange={(e) =>
+                                  updateSet(we.tempId, setIndex, 'reps', parseInt(e.target.value) || 0)
+                                }
+                                min="0"
+                                className="ui-input text-sm py-1.5"
+                              />
+                            </div>
+                            <div className="col-span-5">
+                              <input
+                                type="number"
+                                value={set.weight}
+                                onChange={(e) =>
+                                  updateSet(we.tempId, setIndex, 'weight', parseFloat(e.target.value) || 0)
+                                }
+                                min="0"
+                                step="0.5"
+                                className="ui-input text-sm py-1.5"
+                              />
+                            </div>
+                            <div className="col-span-2 flex justify-end">
+                              {we.sets.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeSet(we.tempId, setIndex)}
+                                  className={`p-1 rounded transition-colors ${
+                                    theme === 'dark'
+                                      ? 'text-red-400 hover:bg-red-500/20'
+                                      : 'text-red-600 hover:bg-red-100'
+                                  }`}
+                                  title="Quitar serie"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => addSet(we.tempId)}

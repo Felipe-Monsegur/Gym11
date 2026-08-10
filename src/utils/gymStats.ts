@@ -1,29 +1,53 @@
-import { Workout, WorkoutExercise } from '../types';
+import { Exercise, MuscleGroup, Workout, WorkoutExercise } from '../types';
 
-export function workoutVolume(workout: Workout): number {
+/** IDs de ejercicios pertenecientes a grupos cardio. */
+export function getCardioExerciseIds(
+  exercises: Exercise[],
+  muscleGroups: MuscleGroup[]
+): Set<string> {
+  const cardioGroupIds = new Set(
+    muscleGroups.filter((g) => g.trackingMode === 'cardio').map((g) => g.id)
+  );
+  return new Set(
+    exercises.filter((e) => cardioGroupIds.has(e.muscleGroupId)).map((e) => e.id)
+  );
+}
+
+export function workoutVolume(
+  workout: Workout,
+  cardioExerciseIds?: Set<string>
+): number {
   return workout.exercises.reduce((total, exercise) => {
-    return total + exercise.sets.reduce((setTotal, set) => {
-      return setTotal + (set.reps * set.weight);
-    }, 0);
+    if (cardioExerciseIds?.has(exercise.exerciseId)) return total;
+    return (
+      total +
+      exercise.sets.reduce((setTotal, set) => {
+        return setTotal + set.reps * set.weight;
+      }, 0)
+    );
   }, 0);
 }
 
-export function exerciseVolume(exercise: WorkoutExercise): number {
-  return exercise.sets.reduce((total, set) => total + (set.reps * set.weight), 0);
+export function exerciseVolume(
+  exercise: WorkoutExercise,
+  isCardio = false
+): number {
+  if (isCardio) return 0;
+  return exercise.sets.reduce((total, set) => total + set.reps * set.weight, 0);
 }
 
 export function weekWorkouts(workouts: Workout[], referenceDate: Date = new Date()): Workout[] {
   const startOfWeek = new Date(referenceDate);
+  startOfWeek.setHours(12, 0, 0, 0);
   const day = startOfWeek.getDay();
   const diff = day === 0 ? 6 : day - 1;
   startOfWeek.setDate(startOfWeek.getDate() - diff);
-  startOfWeek.setHours(0, 0, 0, 0);
 
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(endOfWeek.getDate() + 7);
 
   return workouts.filter((w) => {
-    const d = new Date(w.date);
+    const d = new Date(w.date + 'T12:00:00');
     return d >= startOfWeek && d < endOfWeek;
   });
 }
@@ -79,12 +103,14 @@ export function daysSinceLastWorkout(workouts: Workout[], referenceDate: Date = 
 export const DEFAULT_WEEKLY_GOAL = 4;
 
 export function maxWeightByExercise(
-  workouts: Workout[]
+  workouts: Workout[],
+  cardioExerciseIds?: Set<string>
 ): Map<string, { weight: number; reps: number; date: string }> {
   const result = new Map<string, { weight: number; reps: number; date: string }>();
 
   for (const workout of workouts) {
     for (const exercise of workout.exercises) {
+      if (cardioExerciseIds?.has(exercise.exerciseId)) continue;
       for (const set of exercise.sets) {
         const current = result.get(exercise.exerciseId);
         if (!current || set.weight > current.weight) {
@@ -101,23 +127,32 @@ export function maxWeightByExercise(
   return result;
 }
 
-export function monthlyVolume(workouts: Workout[], year: number, month: number): number {
+export function monthlyVolume(
+  workouts: Workout[],
+  year: number,
+  month: number,
+  cardioExerciseIds?: Set<string>
+): number {
   return workouts
     .filter((w) => {
       const d = new Date(w.date);
       return d.getFullYear() === year && d.getMonth() === month;
     })
-    .reduce((total, w) => total + workoutVolume(w), 0);
+    .reduce((total, w) => total + workoutVolume(w, cardioExerciseIds), 0);
 }
 
-export function getMonthlyVolumeData(workouts: Workout[], monthsBack: number = 6): { month: string; volume: number }[] {
+export function getMonthlyVolumeData(
+  workouts: Workout[],
+  monthsBack: number = 6,
+  cardioExerciseIds?: Set<string>
+): { month: string; volume: number }[] {
   const result: { month: string; volume: number }[] = [];
   const today = new Date();
 
   for (let i = monthsBack - 1; i >= 0; i--) {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
     const monthName = d.toLocaleDateString('es-AR', { month: 'short' });
-    const volume = monthlyVolume(workouts, d.getFullYear(), d.getMonth());
+    const volume = monthlyVolume(workouts, d.getFullYear(), d.getMonth(), cardioExerciseIds);
     result.push({ month: monthName, volume });
   }
 

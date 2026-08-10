@@ -8,6 +8,7 @@ import {
   formatVolume,
   formatWeight,
   DEFAULT_WEEKLY_GOAL,
+  getCardioExerciseIds,
 } from '../utils/gymStats';
 import {
   ResponsiveContainer,
@@ -25,15 +26,23 @@ import {
 } from 'recharts';
 
 export default function Progress() {
-  const { workouts, exercises, bodyWeights, loading } = useData();
+  const { workouts, exercises, muscleGroups, bodyWeights, loading } = useData();
   const { theme, headerColor } = useTheme();
+
+  const cardioExerciseIds = useMemo(
+    () => getCardioExerciseIds(exercises, muscleGroups),
+    [exercises, muscleGroups]
+  );
 
   const weeklyWorkoutsData = useMemo(() => getWeeklyWorkoutCounts(workouts, 12), [workouts]);
 
-  const volumeData = useMemo(() => getMonthlyVolumeData(workouts, 6), [workouts]);
+  const volumeData = useMemo(
+    () => getMonthlyVolumeData(workouts, 6, cardioExerciseIds),
+    [workouts, cardioExerciseIds]
+  );
 
   const prs = useMemo(() => {
-    const prMap = maxWeightByExercise(workouts);
+    const prMap = maxWeightByExercise(workouts, cardioExerciseIds);
     const result: {
       exerciseId: string;
       exerciseName: string;
@@ -54,7 +63,7 @@ export default function Progress() {
     });
 
     return result.sort((a, b) => b.weight - a.weight).slice(0, 10);
-  }, [workouts, exercises]);
+  }, [workouts, exercises, cardioExerciseIds]);
 
   const bodyWeightData = useMemo(() => {
     return [...bodyWeights]

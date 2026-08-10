@@ -25,6 +25,38 @@ import {
   AccessRequestStatus,
   AllowedUser,
 } from '../types';
+import {
+  INITIAL_EXERCISES,
+  INITIAL_MUSCLE_GROUPS,
+  INITIAL_PACK_VERSION,
+} from '../data/initialPack';
+
+export { INITIAL_PACK_VERSION };
+
+const normalizePackName = (name: string) => name.trim().toLowerCase();
+
+const packGroupDocId = (userId: string, key: string) => `${userId}__mg__${key}`;
+const packExerciseDocId = (userId: string, groupKey: string, sortOrder: number) =>
+  `${userId}__ex__${groupKey}__${sortOrder}`;
+
+export type EnsureInitialPackResult = {
+  groupsAdded: number;
+  exercisesAdded: number;
+  groupsUpdated: number;
+  groupsRemoved: number;
+  exercisesRemoved: number;
+};
+
+const ensurePackInflight = new Map<string, Promise<EnsureInitialPackResult>>();
+
+const commitBatches = async (ops: Array<(batch: ReturnType<typeof writeBatch>) => void>) => {
+  const CHUNK = 400;
+  for (let i = 0; i < ops.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    for (const op of ops.slice(i, i + CHUNK)) op(batch);
+    await batch.commit();
+  }
+};
 
 const mapAllowedUser = (id: string, data: Record<string, unknown>): AllowedUser => ({
   id,
@@ -283,6 +315,203 @@ export const reorderMuscleGroups = async (orderedIds: string[]): Promise<void> =
   await batch.commit();
 };
 
+/**
+ * Completa el pack, evita carreras (ids fijos + mutex) y elimina duplicados por nombre.
+ */
+export const ensureInitialPack = async (userId: string): Promise<EnsureInitialPackResult> => {
+  const inflight = ensurePackInflight.get(userId);
+  if (inflight) return inflight;
+
+  const promise = ensureInitialPackInner(userId).finally(() => {
+    ensurePackInflight.delete(userId);
+  });
+  ensurePackInflight.set(userId, promise);
+  return promise;
+};
+
+const ensureInitialPackInner = async (userId: string): Promise<EnsureInitialPackResult> => {
+  let existingGroups = await getMuscleGroups(userId);
+  let existingExercises = await getExercises(userId);
+  const workouts = await getWorkouts(userId);
+
+  let groupsRemoved = 0;
+  let exercisesRemoved = 0;
+  const dedupeOps: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+
+  // --- Dedupe grupos por nombre ---
+  const groupsByName = new Map<string, MuscleGroup[]>();
+  for (const g of existingGroups) {
+    const key = normalizePackName(g.name);
+    const list = groupsByName.get(key) || [];
+    list.push(g);
+    groupsByName.set(key, list);
+  }
+
+  const groupIdRemap = new Map<string, string>();
+  for (const list of groupsByName.values()) {
+    if (list.length <= 1) continue;
+    list.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    const keep = list[0];
+    for (const dup of list.slice(1)) {
+      groupIdRemap.set(dup.id, keep.id);
+      for (const ex of existingExercises.filter((e) => e.muscleGroupId === dup.id)) {
+        dedupeOps.push((batch) =>
+          batch.update(doc(db, 'exercises', ex.id), {
+            muscleGroupId: keep.id,
+            color: keep.color,
+          })
+        );
+        ex.muscleGroupId = keep.id;
+        ex.color = keep.color;
+      }
+      dedupeOps.push((batch) => batch.delete(doc(db, 'muscleGroups', dup.id)));
+      groupsRemoved++;
+    }
+  }
+
+  if (groupIdRemap.size > 0) {
+    existingGroups = existingGroups.filter((g) => !groupIdRemap.has(g.id));
+  }
+
+  // --- Dedupe ejercicios por nombre ---
+  const exercisesByName = new Map<string, Exercise[]>();
+  for (const e of existingExercises) {
+    const key = normalizePackName(e.name);
+    const list = exercisesByName.get(key) || [];
+    list.push(e);
+    exercisesByName.set(key, list);
+  }
+
+  const usedExerciseIds = new Set(
+    workouts.flatMap((w) => w.exercises.map((we) => we.exerciseId))
+  );
+  const exerciseIdRemap = new Map<string, string>();
+
+  for (const list of exercisesByName.values()) {
+    if (list.length <= 1) continue;
+    list.sort((a, b) => {
+      const aUsed = usedExerciseIds.has(a.id) ? 0 : 1;
+      const bUsed = usedExerciseIds.has(b.id) ? 0 : 1;
+      if (aUsed !== bUsed) return aUsed - bUsed;
+      return String(a.createdAt).localeCompare(String(b.createdAt));
+    });
+    const keep = list[0];
+    for (const dup of list.slice(1)) {
+      exerciseIdRemap.set(dup.id, keep.id);
+      dedupeOps.push((batch) => batch.delete(doc(db, 'exercises', dup.id)));
+      exercisesRemoved++;
+    }
+  }
+
+  if (exerciseIdRemap.size > 0) {
+    for (const workout of workouts) {
+      let changed = false;
+      const nextExercises = workout.exercises.map((we) => {
+        const mapped = exerciseIdRemap.get(we.exerciseId);
+        if (!mapped) return we;
+        changed = true;
+        return { ...we, exerciseId: mapped };
+      });
+      if (changed) {
+        dedupeOps.push((batch) =>
+          batch.update(doc(db, 'workouts', workout.id), { exercises: nextExercises })
+        );
+      }
+    }
+    existingExercises = existingExercises.filter((e) => !exerciseIdRemap.has(e.id));
+  }
+
+  if (dedupeOps.length > 0) {
+    await commitBatches(dedupeOps);
+  }
+
+  // --- Completar pack con IDs determinísticos ---
+  const groupByName = new Map(
+    existingGroups.map((g) => [normalizePackName(g.name), g] as const)
+  );
+  const exerciseNames = new Set(existingExercises.map((e) => normalizePackName(e.name)));
+
+  const now = Timestamp.now();
+  const groupIdByKey = new Map<string, string>();
+  const colorByKey = new Map<string, string>();
+  let groupsAdded = 0;
+  let exercisesAdded = 0;
+  let groupsUpdated = 0;
+  const seedOps: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+
+  for (const group of INITIAL_MUSCLE_GROUPS) {
+    const existing = groupByName.get(normalizePackName(group.name));
+    if (existing) {
+      groupIdByKey.set(group.key, existing.id);
+      colorByKey.set(group.key, existing.color);
+      if (group.trackingMode === 'cardio' && existing.trackingMode !== 'cardio') {
+        seedOps.push((batch) =>
+          batch.update(doc(db, 'muscleGroups', existing.id), { trackingMode: 'cardio' })
+        );
+        groupsUpdated++;
+      }
+    } else {
+      const id = packGroupDocId(userId, group.key);
+      groupIdByKey.set(group.key, id);
+      colorByKey.set(group.key, group.color);
+      seedOps.push((batch) =>
+        batch.set(doc(db, 'muscleGroups', id), {
+          name: group.name,
+          color: group.color,
+          userId,
+          sortOrder: group.sortOrder,
+          trackingMode: group.trackingMode,
+          createdAt: now,
+        })
+      );
+      groupsAdded++;
+    }
+  }
+
+  for (const exercise of INITIAL_EXERCISES) {
+    if (exerciseNames.has(normalizePackName(exercise.name))) continue;
+    const muscleGroupId = groupIdByKey.get(exercise.groupKey);
+    if (!muscleGroupId) continue;
+    const id = packExerciseDocId(userId, exercise.groupKey, exercise.sortOrder);
+    seedOps.push((batch) =>
+      batch.set(doc(db, 'exercises', id), {
+        name: exercise.name,
+        muscleGroupId,
+        color: colorByKey.get(exercise.groupKey) || '#3b82f6',
+        userId,
+        sortOrder: exercise.sortOrder,
+        createdAt: now,
+      })
+    );
+    exerciseNames.add(normalizePackName(exercise.name));
+    exercisesAdded++;
+  }
+
+  if (seedOps.length > 0) {
+    await commitBatches(seedOps);
+  }
+
+  return {
+    groupsAdded,
+    exercisesAdded,
+    groupsUpdated,
+    groupsRemoved,
+    exercisesRemoved,
+  };
+};
+
+/** @deprecated Usar ensureInitialPack */
+export const seedInitialPack = async (userId: string): Promise<boolean> => {
+  const result = await ensureInitialPack(userId);
+  return (
+    result.groupsAdded > 0 ||
+    result.exercisesAdded > 0 ||
+    result.groupsUpdated > 0 ||
+    result.groupsRemoved > 0 ||
+    result.exercisesRemoved > 0
+  );
+};
+
 // ============ EJERCICIOS ============
 export const getExercises = async (userId: string): Promise<Exercise[]> => {
   const q = query(collection(db, 'exercises'), where('userId', '==', userId));
@@ -442,6 +671,7 @@ export interface UserSettings {
   headerColorDark?: string;
   headerColorLight?: string;
   headerTitle?: string;
+  initialPackVersion?: number;
 }
 
 export const getUserTheme = async (userId: string): Promise<'dark' | 'light' | null> => {
@@ -486,6 +716,8 @@ export const getUserSettings = async (userId: string): Promise<UserSettings | nu
         headerColorDark: data.headerColorDark || null,
         headerColorLight: data.headerColorLight || null,
         headerTitle: data.headerTitle || null,
+        initialPackVersion:
+          typeof data.initialPackVersion === 'number' ? data.initialPackVersion : undefined,
       };
     }
     return null;
