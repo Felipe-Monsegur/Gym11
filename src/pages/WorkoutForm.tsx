@@ -36,8 +36,26 @@ export default function WorkoutForm() {
   const [saving, setSaving] = useState(false);
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [replacingTempId, setReplacingTempId] = useState<string | null>(null);
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string>('');
   const [exerciseSearch, setExerciseSearch] = useState('');
+
+  const closeExerciseModal = () => {
+    setShowExerciseModal(false);
+    setReplacingTempId(null);
+    setExerciseSearch('');
+    setSelectedMuscleGroup('');
+  };
+
+  const openAddExerciseModal = () => {
+    setReplacingTempId(null);
+    setShowExerciseModal(true);
+  };
+
+  const openReplaceExerciseModal = (tempId: string) => {
+    setReplacingTempId(tempId);
+    setShowExerciseModal(true);
+  };
 
   useEffect(() => {
     if (existingWorkout) {
@@ -102,9 +120,37 @@ export default function WorkoutForm() {
     return { reps: 10, weight: 0, completed: false };
   };
 
-  const addExerciseToWorkout = (exerciseId: string) => {
+  const addOrReplaceExercise = (exerciseId: string) => {
     const exercise = exercises.find((e) => e.id === exerciseId);
     if (!exercise) return;
+
+    if (replacingTempId) {
+      setWorkoutExercises(
+        workoutExercises.map((we) => {
+          if (we.tempId !== replacingTempId) return we;
+          const wasCardio = isCardioExercise(we.exerciseId);
+          const isCardio = isCardioExercise(exerciseId);
+          const sets = we.sets.map((set) => {
+            if (wasCardio === isCardio) return set;
+            if (isCardio) {
+              return {
+                ...set,
+                weight: 0,
+                durationMinutes: set.durationMinutes ?? (set.weight || 10),
+              };
+            }
+            return {
+              reps: set.reps,
+              weight: set.weight || 0,
+              completed: set.completed,
+            };
+          });
+          return { ...we, exerciseId, sets };
+        })
+      );
+      closeExerciseModal();
+      return;
+    }
 
     const newExercise: WorkoutExerciseForm = {
       tempId: `new-${Date.now()}`,
@@ -113,9 +159,7 @@ export default function WorkoutForm() {
       notes: '',
     };
     setWorkoutExercises([...workoutExercises, newExercise]);
-    setShowExerciseModal(false);
-    setExerciseSearch('');
-    setSelectedMuscleGroup('');
+    closeExerciseModal();
   };
 
   const removeExercise = (tempId: string) => {
@@ -199,11 +243,6 @@ export default function WorkoutForm() {
     e.preventDefault();
     if (!user) return;
 
-    if (!title.trim()) {
-      showToast('Ingresá un título para el entrenamiento', 'warning');
-      return;
-    }
-
     if (workoutExercises.length === 0) {
       showToast('Agregá al menos un ejercicio', 'warning');
       return;
@@ -269,14 +308,15 @@ export default function WorkoutForm() {
     <>
       <Modal
         isOpen={showExerciseModal}
-        onClose={() => {
-          setShowExerciseModal(false);
-          setExerciseSearch('');
-          setSelectedMuscleGroup('');
-        }}
-        title="Agregar ejercicio"
+        onClose={closeExerciseModal}
+        title={replacingTempId ? 'Cambiar ejercicio' : 'Agregar ejercicio'}
       >
         <div className="space-y-4">
+          {replacingTempId && (
+            <p className="text-xs text-[var(--text-muted)]">
+              Se mantienen las series (reps, peso o minutos) ya cargadas.
+            </p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="form-group mb-0">
               <label className="text-xs">Buscar</label>
@@ -313,15 +353,20 @@ export default function WorkoutForm() {
               </p>
             ) : (
               filteredExercises.map((exercise) => {
+                const currentId = replacingTempId
+                  ? workoutExercises.find((we) => we.tempId === replacingTempId)?.exerciseId
+                  : null;
+                const isCurrent = currentId === exercise.id;
                 const alreadyAdded = workoutExercises.some((we) => we.exerciseId === exercise.id);
+                const disabled = alreadyAdded && !isCurrent;
                 return (
                   <button
                     key={exercise.id}
                     type="button"
-                    onClick={() => addExerciseToWorkout(exercise.id)}
-                    disabled={alreadyAdded}
+                    onClick={() => addOrReplaceExercise(exercise.id)}
+                    disabled={disabled}
                     className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${
-                      alreadyAdded
+                      disabled
                         ? 'opacity-50 cursor-not-allowed'
                         : theme === 'dark'
                         ? 'hover:bg-white/5'
@@ -338,7 +383,10 @@ export default function WorkoutForm() {
                         {getMuscleGroupName(exercise.muscleGroupId)}
                       </div>
                     </div>
-                    {alreadyAdded && (
+                    {isCurrent && (
+                      <span className="text-xs text-[var(--text-muted)]">Actual</span>
+                    )}
+                    {disabled && (
                       <span className="text-xs text-[var(--text-muted)]">Agregado</span>
                     )}
                   </button>
@@ -377,14 +425,13 @@ export default function WorkoutForm() {
               />
             </div>
             <div className="form-group mb-0">
-              <label>Título</label>
+              <label>Título (opcional)</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ej: Piernas, Push, Full Body..."
                 className="ui-input"
-                required
               />
             </div>
           </div>
@@ -415,27 +462,14 @@ export default function WorkoutForm() {
 
         {/* Exercises */}
         <div className="ui-panel p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="ui-label ui-label-lg">Ejercicios</h2>
-            <button
-              type="button"
-              onClick={() => setShowExerciseModal(true)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-opacity hover:opacity-90"
-              style={{ backgroundColor: headerColor }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Agregar
-            </button>
-          </div>
+          <h2 className="ui-label ui-label-lg mb-4">Ejercicios</h2>
 
           {workoutExercises.length === 0 ? (
             <div className="text-center py-8 border-2 border-dashed border-[var(--border)] rounded-lg">
               <div className="text-[var(--text-muted)] mb-2">No hay ejercicios agregados</div>
               <button
                 type="button"
-                onClick={() => setShowExerciseModal(true)}
+                onClick={openAddExerciseModal}
                 className="text-sm font-medium transition-colors hover:opacity-80"
                 style={{ color: headerColor }}
               >
@@ -477,24 +511,43 @@ export default function WorkoutForm() {
                         className="w-3 h-3 rounded-full shrink-0"
                         style={{ backgroundColor: getExerciseColor(we.exerciseId) }}
                       />
-                      <span className="font-semibold text-[var(--text)] truncate">
+                      <button
+                        type="button"
+                        onClick={() => openReplaceExerciseModal(we.tempId)}
+                        className="font-semibold text-[var(--text)] truncate text-left hover:underline underline-offset-2"
+                        title="Cambiar ejercicio (conserva las series)"
+                      >
                         {getExerciseName(we.exerciseId)}
-                      </span>
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeExercise(we.tempId)}
-                      className={`p-1.5 rounded transition-colors ${
-                        theme === 'dark'
-                          ? 'text-red-400 hover:bg-red-500/20'
-                          : 'text-red-600 hover:bg-red-100'
-                      }`}
-                      title="Quitar ejercicio"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openReplaceExerciseModal(we.tempId)}
+                        className={`p-1.5 rounded text-xs font-medium transition-colors ${
+                          theme === 'dark'
+                            ? 'text-[var(--text-muted)] hover:bg-white/10 hover:text-[var(--text)]'
+                            : 'text-[var(--text-muted)] hover:bg-black/5 hover:text-[var(--text)]'
+                        }`}
+                        title="Cambiar ejercicio (conserva las series)"
+                      >
+                        Cambiar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeExercise(we.tempId)}
+                        className={`p-1.5 rounded transition-colors ${
+                          theme === 'dark'
+                            ? 'text-red-400 hover:bg-red-500/20'
+                            : 'text-red-600 hover:bg-red-100'
+                        }`}
+                        title="Quitar ejercicio"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Sets */}
@@ -638,6 +691,20 @@ export default function WorkoutForm() {
               ))}
             </div>
           )}
+
+          <div className="flex justify-end mt-4">
+            <button
+              type="button"
+              onClick={openAddExerciseModal}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-opacity hover:opacity-90"
+              style={{ backgroundColor: headerColor }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Agregar
+            </button>
+          </div>
         </div>
 
         {/* Submit */}

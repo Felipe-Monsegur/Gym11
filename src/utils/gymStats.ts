@@ -1,4 +1,30 @@
 import { Exercise, MuscleGroup, Workout, WorkoutExercise } from '../types';
+import { sortByDisplayOrder } from './displayOrder';
+
+/** Título del entrenamiento, o los grupos musculares si no hay título. */
+export function workoutDisplayTitle(
+  workout: Pick<Workout, 'title' | 'exercises'>,
+  exercises: Exercise[],
+  muscleGroups: MuscleGroup[]
+): string {
+  const trimmed = workout.title?.trim();
+  if (trimmed) return trimmed;
+
+  const groupIds = [
+    ...new Set(
+      workout.exercises
+        .map((we) => exercises.find((e) => e.id === we.exerciseId)?.muscleGroupId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+
+  const groups = groupIds
+    .map((id) => muscleGroups.find((g) => g.id === id))
+    .filter((g): g is MuscleGroup => Boolean(g));
+
+  const names = sortByDisplayOrder(groups).map((g) => g.name);
+  return names.length > 0 ? names.join(' · ') : 'Entrenamiento';
+}
 
 /** IDs de ejercicios pertenecientes a grupos cardio. */
 export function getCardioExerciseIds(

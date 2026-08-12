@@ -8,6 +8,7 @@ import {
   daysSinceLastWorkout,
   formatVolume,
   getCardioExerciseIds,
+  workoutDisplayTitle,
 } from '../utils/gymStats';
 
 export default function Dashboard() {
@@ -165,7 +166,7 @@ export default function Dashboard() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-[var(--text)] truncate">
-                          {workout.title}
+                          {workoutDisplayTitle(workout, exercises, muscleGroups)}
                         </span>
                         <span className="text-xs text-[var(--text-muted)] shrink-0">
                           {new Date(workout.date).toLocaleDateString('es-AR', {

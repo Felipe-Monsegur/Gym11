@@ -4,7 +4,12 @@ import { useData } from '../context/DataContext';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { deleteWorkout } from '../services/firebaseService';
-import { workoutVolume, formatVolume, getCardioExerciseIds } from '../utils/gymStats';
+import {
+  workoutVolume,
+  formatVolume,
+  getCardioExerciseIds,
+  workoutDisplayTitle,
+} from '../utils/gymStats';
 import ConfirmModal from '../components/ConfirmModal';
 import DateInput from '../components/DateInput';
 
@@ -200,7 +205,7 @@ export default function WorkoutHistory() {
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-semibold text-[var(--text)] truncate">
-                            {workout.title}
+                            {workoutDisplayTitle(workout, exercises, muscleGroups)}
                           </span>
                           <span className="text-xs text-[var(--text-muted)] shrink-0">
                             {new Date(workout.date).toLocaleDateString('es-AR', {
@@ -253,7 +258,7 @@ export default function WorkoutHistory() {
                             setConfirmModal({
                               isOpen: true,
                               workoutId: workout.id,
-                              workoutTitle: workout.title,
+                              workoutTitle: workoutDisplayTitle(workout, exercises, muscleGroups),
                             })
                           }
                           className={`p-2 rounded-lg transition-colors ${
