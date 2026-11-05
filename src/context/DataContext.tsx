@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import {
   getMuscleGroups,
@@ -19,6 +19,9 @@ interface DataContextType {
   bodyWeights: BodyWeight[];
   loading: boolean;
   refresh: () => Promise<void>;
+  /** Actualiza un entrenamiento en memoria (sin recargar todo), p. ej. tras un autoguardado. */
+  upsertWorkout: (workout: Workout) => void;
+  removeWorkout: (id: string) => void;
 }
 
 const DataContext = createContext<DataContextType>({
@@ -28,7 +31,11 @@ const DataContext = createContext<DataContextType>({
   bodyWeights: [],
   loading: true,
   refresh: async () => {},
+  upsertWorkout: () => {},
+  removeWorkout: () => {},
 });
+
+const byDateDesc = (a: Workout, b: Workout) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
 
 export const useData = () => useContext(DataContext);
 
@@ -119,6 +126,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const upsertWorkout = useCallback((workout: Workout) => {
+    setWorkouts((prev) => {
+      const exists = prev.some((w) => w.id === workout.id);
+      const next = exists ? prev.map((w) => (w.id === workout.id ? workout : w)) : [workout, ...prev];
+      return [...next].sort(byDateDesc);
+    });
+  }, []);
+
+  const removeWorkout = useCallback((id: string) => {
+    setWorkouts((prev) => prev.filter((w) => w.id !== id));
+  }, []);
+
   useEffect(() => {
     if (authLoading || checkingAccess) {
       setLoading(true);
@@ -136,6 +155,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         bodyWeights,
         loading,
         refresh: loadData,
+        upsertWorkout,
+        removeWorkout,
       }}
     >
       {children}

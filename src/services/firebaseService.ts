@@ -20,6 +20,7 @@ import {
   MuscleGroup,
   Exercise,
   Workout,
+  WorkoutExercise,
   BodyWeight,
   AccessRequest,
   AccessRequestStatus,
@@ -567,27 +568,49 @@ export const getWorkouts = async (userId: string): Promise<Workout[]> => {
   return list;
 };
 
-export const addWorkout = async (workout: Omit<Workout, 'id' | 'createdAt'>): Promise<string> => {
+function serializeWorkoutExercise(ex: WorkoutExercise): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    exerciseId: ex.exerciseId,
+    sets: ex.sets.map((set) => {
+      const clean: Record<string, unknown> = { reps: set.reps || 0, weight: set.weight || 0 };
+      if (set.durationMinutes != null) clean.durationMinutes = set.durationMinutes;
+      if (set.completed != null) clean.completed = set.completed;
+      return clean;
+    }),
+  };
+  if (ex.notes?.trim()) item.notes = ex.notes.trim();
+  // Solo se guarda cuando es mancuernas, para no ensuciar los docs.
+  if (ex.equipment === 'dumbbell') item.equipment = 'dumbbell';
+  return item;
+}
+
+function workoutPayload(workout: Omit<Workout, 'id' | 'createdAt'>): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     date: workout.date,
     title: workout.title,
-    exercises: workout.exercises.map((ex) => {
-      const item: Record<string, unknown> = {
-        exerciseId: ex.exerciseId,
-        sets: ex.sets,
-      };
-      if (ex.notes?.trim()) item.notes = ex.notes.trim();
-      return item;
-    }),
+    exercises: workout.exercises.map(serializeWorkoutExercise),
     userId: workout.userId,
     createdAt: Timestamp.now(),
   };
   if (workout.notes?.trim()) payload.notes = workout.notes.trim();
-  if (workout.durationMinutes != null && workout.durationMinutes > 0) {
-    payload.durationMinutes = workout.durationMinutes;
-  }
-  const docRef = await addDoc(collection(db, 'workouts'), payload);
+  if (workout.status) payload.status = workout.status;
+  return payload;
+}
+
+export const addWorkout = async (workout: Omit<Workout, 'id' | 'createdAt'>): Promise<string> => {
+  const docRef = await addDoc(collection(db, 'workouts'), workoutPayload(workout));
   return docRef.id;
+};
+
+/** Id generado en el cliente: permite crear el entrenamiento en curso aunque no haya señal. */
+export const newWorkoutId = (): string => doc(collection(db, 'workouts')).id;
+
+/** Crea el entrenamiento con un id dado (la promesa resuelve cuando el servidor confirma). */
+export const createWorkoutWithId = async (
+  id: string,
+  workout: Omit<Workout, 'id' | 'createdAt'>
+): Promise<void> => {
+  await setDoc(doc(db, 'workouts', id), workoutPayload(workout));
 };
 
 export const updateWorkout = async (id: string, updates: Partial<Workout>): Promise<void> => {
@@ -595,24 +618,12 @@ export const updateWorkout = async (id: string, updates: Partial<Workout>): Prom
   if (updates.date !== undefined) updateData.date = updates.date;
   if (updates.title !== undefined) updateData.title = updates.title;
   if (updates.exercises !== undefined) {
-    updateData.exercises = updates.exercises.map((ex) => {
-      const item: Record<string, unknown> = {
-        exerciseId: ex.exerciseId,
-        sets: ex.sets,
-      };
-      if (ex.notes?.trim()) item.notes = ex.notes.trim();
-      return item;
-    });
+    updateData.exercises = updates.exercises.map(serializeWorkoutExercise);
   }
   if (updates.notes !== undefined) {
     updateData.notes = updates.notes.trim() ? updates.notes.trim() : deleteField();
   }
-  if (updates.durationMinutes !== undefined) {
-    updateData.durationMinutes =
-      updates.durationMinutes != null && updates.durationMinutes > 0
-        ? updates.durationMinutes
-        : deleteField();
-  }
+  if (updates.status !== undefined) updateData.status = updates.status;
   await updateDoc(doc(db, 'workouts', id), updateData);
 };
 

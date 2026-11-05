@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { deleteWorkout } from '../services/firebaseService';
 import {
@@ -12,10 +11,12 @@ import {
 } from '../utils/gymStats';
 import ConfirmModal from '../components/ConfirmModal';
 import DateInput from '../components/DateInput';
+import CollapsibleOptionsPanel from '../components/CollapsibleOptionsPanel';
+import PanelSkeleton from '../components/ui/PanelSkeleton';
+import EmptyState from '../components/ui/EmptyState';
 
 export default function WorkoutHistory() {
   const { workouts, exercises, muscleGroups, loading, refresh } = useData();
-  const { theme, headerColor } = useTheme();
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -71,11 +72,16 @@ export default function WorkoutHistory() {
     }
   };
 
+  const hasFilters = Boolean(searchTerm || dateFrom || dateTo);
+  const filterSummary = hasFilters
+    ? [searchTerm && `"${searchTerm}"`, dateFrom && `desde ${dateFrom}`, dateTo && `hasta ${dateTo}`]
+        .filter(Boolean)
+        .join(' · ')
+    : 'Sin filtros';
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-lg text-[var(--text-muted)] animate-pulse">Cargando...</div>
-      </div>
+      <PanelSkeleton />
     );
   }
 
@@ -91,92 +97,79 @@ export default function WorkoutHistory() {
       />
 
       <div className="space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className={`text-xl sm:text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-            Historial
-          </h1>
-          <Link
-            to="/entrenamientos/nuevo"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90"
-            style={{ backgroundColor: headerColor }}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            <span className="hidden sm:inline">Entrenar</span>
-          </Link>
+        <div>
+          <h1 className="ui-page-title">Historial</h1>
+          <p className="ui-page-subtitle">
+            {filteredWorkouts.length} de {workouts.length} entrenamientos
+          </p>
         </div>
 
-        {/* Filters */}
-        <div className="ui-panel p-4">
+        <CollapsibleOptionsPanel title="Filtros" summary={filterSummary} defaultOpen={hasFilters}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="form-group mb-0">
-              <label className="text-xs">Buscar</label>
+              <label>Buscar</label>
               <input
                 type="text"
                 placeholder="Título o ejercicio..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="ui-input text-sm"
+                className="ui-input"
               />
             </div>
             <div className="form-group mb-0">
-              <label className="text-xs">Desde</label>
+              <label>Desde</label>
               <DateInput
                 value={dateFrom}
                 onChange={setDateFrom}
-                className="ui-input text-sm"
+                className="ui-input"
                 allowClear
               />
             </div>
             <div className="form-group mb-0">
-              <label className="text-xs">Hasta</label>
+              <label>Hasta</label>
               <DateInput
                 value={dateTo}
                 onChange={setDateTo}
-                className="ui-input text-sm"
+                className="ui-input"
                 allowClear
               />
             </div>
           </div>
-          {(searchTerm || dateFrom || dateTo) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchTerm('');
-                setDateFrom('');
-                setDateTo('');
-              }}
-              className="mt-3 text-sm font-medium transition-colors hover:opacity-80"
-              style={{ color: headerColor }}
-            >
-              Limpiar filtros
-            </button>
+          {hasFilters && (
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setDateFrom('');
+                  setDateTo('');
+                }}
+                className="ui-options-clear-btn"
+              >
+                Limpiar filtros
+              </button>
+            </div>
           )}
-        </div>
+        </CollapsibleOptionsPanel>
 
         {/* Workouts List */}
         <div className="ui-panel p-4 sm:p-6">
           {filteredWorkouts.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-[var(--text-muted)] mb-4">
-                {workouts.length === 0
-                  ? 'No tenés entrenamientos registrados'
-                  : 'No se encontraron entrenamientos'}
-              </div>
-              {workouts.length === 0 && (
-                <Link
-                  to="/entrenamientos/nuevo"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: headerColor }}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Registrar primer entrenamiento
-                </Link>
-              )}
-            </div>
+            <EmptyState
+              title={workouts.length === 0 ? 'Todavía no hay entrenamientos' : 'No se encontraron entrenamientos'}
+              description={
+                workouts.length === 0
+                  ? 'Registrá tu primera sesión para empezar el historial.'
+                  : 'Probá con otros filtros.'
+              }
+              action={
+                workouts.length === 0 ? (
+                  <Link to="/entrenamientos/nuevo" className="ui-btn ui-btn-primary">
+                    Registrar entrenamiento
+                  </Link>
+                ) : undefined
+              }
+            />
           ) : (
             <div className="space-y-3">
               {filteredWorkouts.map((workout) => {
@@ -207,8 +200,19 @@ export default function WorkoutHistory() {
                           <span className="font-semibold text-[var(--text)] truncate">
                             {workoutDisplayTitle(workout, exercises, muscleGroups)}
                           </span>
-                          <span className="text-xs text-[var(--text-muted)] shrink-0">
-                            {new Date(workout.date).toLocaleDateString('es-AR', {
+                          {workout.status === 'in_progress' && (
+                            <span
+                              className="ui-label ui-label-xs px-1.5 py-0.5 rounded-pill shrink-0"
+                              style={{
+                                color: 'var(--accent-text)',
+                                background: 'color-mix(in srgb, var(--header-color) 16%, transparent)',
+                              }}
+                            >
+                              En curso
+                            </span>
+                          )}
+                          <span className="ui-caption shrink-0">
+                            {new Date(workout.date + 'T12:00:00').toLocaleDateString('es-AR', {
                               weekday: 'short',
                               day: 'numeric',
                               month: 'short',
@@ -241,14 +245,11 @@ export default function WorkoutHistory() {
                       <div className="flex items-center gap-1 shrink-0">
                         <Link
                           to={`/entrenamientos/${workout.id}`}
-                          className={`p-2 rounded-lg transition-colors ${
-                            theme === 'dark'
-                              ? 'text-blue-400 hover:bg-blue-500/20'
-                              : 'text-blue-600 hover:bg-blue-100'
-                          }`}
+                          className="ui-row-action is-edit"
                           title="Editar"
+                          aria-label="Editar entrenamiento"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </Link>
@@ -261,14 +262,11 @@ export default function WorkoutHistory() {
                               workoutTitle: workoutDisplayTitle(workout, exercises, muscleGroups),
                             })
                           }
-                          className={`p-2 rounded-lg transition-colors ${
-                            theme === 'dark'
-                              ? 'text-red-400 hover:bg-red-500/20'
-                              : 'text-red-600 hover:bg-red-100'
-                          }`}
+                          className="ui-row-action is-delete"
                           title="Eliminar"
+                          aria-label="Eliminar entrenamiento"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
@@ -281,9 +279,6 @@ export default function WorkoutHistory() {
           )}
         </div>
 
-        <div className="text-sm text-[var(--text-muted)] text-center">
-          {filteredWorkouts.length} de {workouts.length} entrenamientos
-        </div>
       </div>
     </>
   );

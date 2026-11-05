@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { useTheme } from '../context/ThemeContext';
+import Skeleton from '../components/ui/Skeleton';
+import EmptyState from '../components/ui/EmptyState';
+import WorkoutCalendar from '../components/WorkoutCalendar';
 import {
   weekWorkouts,
   workoutVolume,
@@ -9,11 +11,25 @@ import {
   formatVolume,
   getCardioExerciseIds,
   workoutDisplayTitle,
+  getInProgressWorkout,
 } from '../utils/gymStats';
+
+// Nombres literales: Tailwind descarta las clases de @layer components que no ve completas en el código.
+const KPI_TINTS = ['ui-kpi-pastel-1', 'ui-kpi-pastel-2', 'ui-kpi-pastel-3', 'ui-kpi-pastel-4'];
+
+function InProgressChip() {
+  return (
+    <span
+      className="ui-label ui-label-xs px-1.5 py-0.5 rounded-pill shrink-0"
+      style={{ color: 'var(--accent-text)', background: 'color-mix(in srgb, var(--header-color) 16%, transparent)' }}
+    >
+      En curso
+    </span>
+  );
+}
 
 export default function Dashboard() {
   const { workouts, exercises, muscleGroups, loading } = useData();
-  const { theme, headerColor } = useTheme();
 
   const cardioExerciseIds = useMemo(
     () => getCardioExerciseIds(exercises, muscleGroups),
@@ -29,6 +45,7 @@ export default function Dashboard() {
   const daysSince = useMemo(() => daysSinceLastWorkout(workouts), [workouts]);
 
   const last5Workouts = useMemo(() => workouts.slice(0, 5), [workouts]);
+  const inProgress = useMemo(() => getInProgressWorkout(workouts), [workouts]);
 
   const getMuscleGroupName = (muscleGroupId: string) => {
     const group = muscleGroups.find((g) => g.id === muscleGroupId);
@@ -42,104 +59,109 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-lg text-[var(--text-muted)] animate-pulse">Cargando...</div>
+      <div className="space-y-4 sm:space-y-6" aria-busy="true" aria-label="Cargando">
+        <Skeleton className="h-9 w-48" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-[5.5rem] !rounded-[var(--radius-panel)]" />
+          ))}
+        </div>
+        <Skeleton className="h-80 !rounded-[var(--radius-panel)]" />
+        <Skeleton className="h-72 !rounded-[var(--radius-panel)]" />
       </div>
     );
   }
 
+  const kpis = [
+    {
+      label: 'Esta semana',
+      value: String(thisWeekWorkouts.length),
+      caption: thisWeekWorkouts.length === 1 ? 'entrenamiento' : 'entrenamientos',
+    },
+    { label: 'Volumen semanal', value: formatVolume(weeklyVolume), caption: 'total' },
+    {
+      label: 'Último',
+      value: daysSince === null ? '—' : daysSince === 0 ? 'Hoy' : String(daysSince),
+      caption:
+        daysSince === null
+          ? 'sin registros'
+          : daysSince === 0
+            ? 'entrenaste'
+            : daysSince === 1
+              ? 'día atrás'
+              : 'días atrás',
+    },
+    { label: 'Total', value: String(workouts.length), caption: 'entrenamientos' },
+  ];
+
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className={`text-xl sm:text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-          Dashboard
-        </h1>
+      <div>
+        <h1 className="ui-page-title">Dashboard</h1>
+        <p className="ui-page-subtitle">Tu semana de entrenamiento de un vistazo.</p>
+      </div>
+
+      {inProgress && (
         <Link
-          to="/entrenamientos/nuevo"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90"
-          style={{ backgroundColor: headerColor }}
+          to={`/entrenamientos/${inProgress.id}`}
+          className="ui-panel p-4 sm:p-5 flex items-center justify-between gap-3"
+          style={{
+            background: 'color-mix(in srgb, var(--header-color) 14%, var(--surface))',
+            boxShadow: 'inset 4px 0 0 var(--header-color)',
+          }}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          <span className="hidden sm:inline">Entrenar</span>
+          <div className="min-w-0">
+            <div className="ui-label ui-label-sm" style={{ color: 'var(--accent-text)' }}>
+              Entrenamiento en curso
+            </div>
+            <div className="font-semibold text-[var(--text)] truncate">
+              {workoutDisplayTitle(inProgress, exercises, muscleGroups)}
+            </div>
+            <div className="ui-caption">
+              {inProgress.exercises.length} {inProgress.exercises.length === 1 ? 'ejercicio' : 'ejercicios'} cargados
+            </div>
+          </div>
+          <span className="ui-btn ui-btn-primary shrink-0">Continuar</span>
         </Link>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {kpis.map((kpi, i) => (
+          <div key={kpi.label} className={`ui-kpi ${KPI_TINTS[i]}`}>
+            <div className="ui-kpi-label">{kpi.label}</div>
+            <div className="ui-kpi-value">{kpi.value}</div>
+            <div className="ui-caption">{kpi.caption}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="ui-panel p-4">
-          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Esta semana</div>
-          <div className="text-2xl sm:text-3xl font-bold text-[var(--text)]">
-            {thisWeekWorkouts.length}
-          </div>
-          <div className="text-xs text-[var(--text-muted)]">
-            {thisWeekWorkouts.length === 1 ? 'entrenamiento' : 'entrenamientos'}
-          </div>
-        </div>
-
-        <div className="ui-panel p-4">
-          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Volumen semanal</div>
-          <div className="text-2xl sm:text-3xl font-bold text-[var(--text)]">
-            {formatVolume(weeklyVolume)}
-          </div>
-          <div className="text-xs text-[var(--text-muted)]">total</div>
-        </div>
-
-        <div className="ui-panel p-4">
-          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Último</div>
-          <div className="text-2xl sm:text-3xl font-bold text-[var(--text)]">
-            {daysSince === null ? '—' : daysSince === 0 ? 'Hoy' : daysSince}
-          </div>
-          <div className="text-xs text-[var(--text-muted)]">
-            {daysSince === null
-              ? 'sin registros'
-              : daysSince === 0
-                ? 'entrenaste'
-                : daysSince === 1
-                  ? 'día atrás'
-                  : 'días atrás'}
-          </div>
-        </div>
-
-        <div className="ui-panel p-4">
-          <div className="text-xs sm:text-sm text-[var(--text-muted)] mb-1">Total</div>
-          <div className="text-2xl sm:text-3xl font-bold text-[var(--text)]">
-            {workouts.length}
-          </div>
-          <div className="text-xs text-[var(--text-muted)]">entrenamientos</div>
-        </div>
+      <div className="ui-panel p-4 sm:p-6">
+        <WorkoutCalendar workouts={workouts} exercises={exercises} muscleGroups={muscleGroups} />
       </div>
 
-      {/* Last 5 Workouts */}
       <div className="ui-panel p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="ui-label ui-label-lg">Últimos entrenamientos</h2>
           {workouts.length > 5 && (
-            <Link
-              to="/entrenamientos"
-              className="text-sm font-medium transition-colors hover:opacity-80"
-              style={{ color: headerColor }}
-            >
+            <Link to="/entrenamientos" className="ui-link-btn">
               Ver todos
             </Link>
           )}
         </div>
 
         {last5Workouts.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="text-[var(--text-muted)] mb-4">No tenés entrenamientos registrados</div>
-            <Link
-              to="/entrenamientos/nuevo"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90"
-              style={{ backgroundColor: headerColor }}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Registrar primer entrenamiento
-            </Link>
-          </div>
+          <EmptyState
+            title="Todavía no hay entrenamientos"
+            description="Registrá tu primera sesión para empezar a ver tus estadísticas."
+            action={
+              <Link to="/entrenamientos/nuevo" className="ui-btn ui-btn-primary">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Registrar entrenamiento
+              </Link>
+            }
+          />
         ) : (
           <div className="space-y-3">
             {last5Workouts.map((workout) => {
@@ -148,28 +170,22 @@ export default function Dashboard() {
               const uniqueMuscleGroups = [
                 ...new Set(
                   workout.exercises
-                    .map((e) => {
-                      const ex = exercises.find((ex) => ex.id === e.exerciseId);
-                      return ex?.muscleGroupId;
-                    })
+                    .map((e) => exercises.find((ex) => ex.id === e.exerciseId)?.muscleGroupId)
                     .filter(Boolean)
                 ),
-              ];
+              ] as string[];
 
               return (
-                <Link
-                  key={workout.id}
-                  to={`/entrenamientos/${workout.id}`}
-                  className="ui-list-item block p-4 transition-colors hover:bg-[var(--surface-2)]"
-                >
+                <Link key={workout.id} to={`/entrenamientos/${workout.id}`} className="ui-list-item block p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-[var(--text)] truncate">
                           {workoutDisplayTitle(workout, exercises, muscleGroups)}
                         </span>
-                        <span className="text-xs text-[var(--text-muted)] shrink-0">
-                          {new Date(workout.date).toLocaleDateString('es-AR', {
+                        {workout.status === 'in_progress' && <InProgressChip />}
+                        <span className="ui-caption shrink-0">
+                          {new Date(workout.date + 'T12:00:00').toLocaleDateString('es-AR', {
                             weekday: 'short',
                             day: 'numeric',
                             month: 'short',
@@ -181,15 +197,13 @@ export default function Dashboard() {
                           <span
                             key={groupId}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                            style={{ backgroundColor: getMuscleGroupColor(groupId as string) }}
+                            style={{ backgroundColor: getMuscleGroupColor(groupId) }}
                           >
-                            {getMuscleGroupName(groupId as string)}
+                            {getMuscleGroupName(groupId)}
                           </span>
                         ))}
                         {uniqueMuscleGroups.length > 3 && (
-                          <span className="text-xs text-[var(--text-muted)]">
-                            +{uniqueMuscleGroups.length - 3}
-                          </span>
+                          <span className="ui-caption">+{uniqueMuscleGroups.length - 3}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-3 text-sm text-[var(--text-muted)]">
@@ -203,6 +217,7 @@ export default function Dashboard() {
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
+                      aria-hidden
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
@@ -216,22 +231,14 @@ export default function Dashboard() {
 
       {/* Fallback si el pack inicial no se pudo cargar */}
       {(muscleGroups.length === 0 || exercises.length === 0) && (
-        <div className="ui-panel p-4 sm:p-6 border-2 border-dashed border-[var(--border-strong)]">
+        <div className="ui-panel p-4 sm:p-6">
           <h2 className="ui-label ui-label-lg mb-3">Configuración inicial</h2>
-          <p className="text-sm text-[var(--text-muted)] mb-4">
+          <p className="ui-caption mb-4">
             Los usuarios nuevos reciben un pack de grupos y ejercicios automáticamente. Si no aparecen, crealos en Gestión.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="/gestion"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-opacity hover:opacity-90 bg-blue-600"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Ir a Gestión
-            </Link>
-          </div>
+          <Link to="/gestion" className="ui-btn ui-btn-secondary">
+            Ir a Gestión
+          </Link>
         </div>
       )}
     </div>

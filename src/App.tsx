@@ -30,8 +30,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading || checkingAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0c111b]">
-        <div className="text-lg text-slate-200 tracking-wide animate-pulse">Cargando...</div>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[var(--app-bg)]"
+        role="status"
+        aria-label="Cargando"
+      >
+        <img
+          src="/logo.svg?v=8"
+          alt=""
+          className="w-14 h-14 rounded-2xl ring-1 ring-[var(--border)] animate-pulse"
+        />
+        <span className="text-sm text-[var(--text-muted)]">Cargando…</span>
       </div>
     );
   }

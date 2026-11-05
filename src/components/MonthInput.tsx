@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useTheme } from '../context/ThemeContext';
 import { getTodayMonthString, isIOSDevice } from '../utils/date';
 
 type MonthInputProps = {
@@ -33,8 +32,6 @@ export default function MonthInput({
   allowClear = true,
   id,
 }: MonthInputProps) {
-  const { theme } = useTheme();
-  const dark = theme === 'dark';
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [useNative] = useState(() => isIOSDevice());
@@ -54,16 +51,19 @@ export default function MonthInput({
         setOpen(false);
       }
     };
+    // En captura: Escape cierra solo el selector, no el modal que lo contiene
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setOpen(false);
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('touchstart', onPointerDown);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('touchstart', onPointerDown);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
     };
   }, [open, useNative]);
 
@@ -72,16 +72,7 @@ export default function MonthInput({
     ? format(selected, 'MMMM yyyy', { locale: es })
     : 'Elegir mes';
 
-  const panel = dark
-    ? 'bg-gray-800 border-gray-600 text-gray-100 shadow-xl'
-    : 'bg-white border-gray-200 text-gray-900 shadow-xl';
-  const muted = dark ? 'text-gray-500' : 'text-gray-400';
-  const dayHover = dark ? 'hover:bg-gray-700' : 'hover:bg-gray-100';
-  const todayRing = dark ? 'ring-1 ring-sky-400/70' : 'ring-1 ring-sky-500/60';
-  const selectedDay = 'bg-sky-500 text-white hover:bg-sky-500';
-  const footerBtn = dark
-    ? 'text-sky-400 hover:text-sky-300'
-    : 'text-sky-600 hover:text-sky-700';
+  const muted = 'text-[var(--text-muted)]';
 
   if (useNative) {
     return (
@@ -128,30 +119,32 @@ export default function MonthInput({
         <div
           role="dialog"
           aria-label="Selector de mes"
-          className={`absolute left-0 z-50 mt-1 w-[min(100%,18.5rem)] rounded-xl border p-3 ${panel}`}
+          className="ui-popover absolute left-0 z-50 mt-1.5 w-[min(100%,19rem)] p-3"
         >
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <button
-              type="button"
-              onClick={() => setViewYear((y) => y - 1)}
-              className={`p-1.5 rounded-lg ${dayHover}`}
-              aria-label="Año anterior"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div className="text-sm font-semibold">{viewYear}</div>
-            <button
-              type="button"
-              onClick={() => setViewYear((y) => y + 1)}
-              className={`p-1.5 rounded-lg ${dayHover}`}
-              aria-label="Año siguiente"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="pl-1.5 text-[0.9375rem] font-semibold">{viewYear}</div>
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={() => setViewYear((y) => y - 1)}
+                className="ui-icon-btn ui-icon-btn-ghost !w-9 !h-9 !min-w-0 !min-h-0 !text-[var(--accent-text)]"
+                aria-label="Año anterior"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewYear((y) => y + 1)}
+                className="ui-icon-btn ui-icon-btn-ghost !w-9 !h-9 !min-w-0 !min-h-0 !text-[var(--accent-text)]"
+                aria-label="Año siguiente"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-1.5">
@@ -168,10 +161,11 @@ export default function MonthInput({
                     onChange(monthValue);
                     setOpen(false);
                   }}
+                  aria-pressed={isSelected}
                   className={[
-                    'h-9 rounded-lg text-sm capitalize transition-colors',
-                    isSelected ? selectedDay : dayHover,
-                    !isSelected && isToday ? todayRing : '',
+                    'ui-cal-cell is-month',
+                    isToday ? 'is-today' : '',
+                    isSelected ? 'is-selected' : '',
                   ].join(' ')}
                 >
                   {format(labelDate, 'MMM', { locale: es })}
@@ -180,11 +174,11 @@ export default function MonthInput({
             })}
           </div>
 
-          <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-600/40">
+          <div className="ui-popover-footer flex items-center justify-between mt-2 pt-2">
             {allowClear ? (
               <button
                 type="button"
-                className={`text-sm font-medium ${footerBtn}`}
+                className="ui-link-btn"
                 onClick={() => {
                   onChange('');
                   setOpen(false);
@@ -197,7 +191,7 @@ export default function MonthInput({
             )}
             <button
               type="button"
-              className={`text-sm font-medium ${footerBtn}`}
+              className="ui-link-btn"
               onClick={() => {
                 const current = getTodayMonthString();
                 onChange(current);

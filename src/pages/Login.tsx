@@ -38,7 +38,7 @@ export default function Login() {
     setError('');
     setInfo('');
     if (!email.trim()) {
-      setError('Ingresá tu email arriba y después tocá "Olvidé mi contraseña".');
+      setError('Ingresá tu email arriba y después tocá “Olvidé mi contraseña”.');
       return;
     }
     setLoading(true);
@@ -60,9 +60,9 @@ export default function Login() {
         style={{
           background: `
             linear-gradient(165deg,
-              color-mix(in srgb, ${accent} 92%, #0a0e16) 0%,
-              color-mix(in srgb, ${accent} 55%, #0c111b) 48%,
-              #0a0e16 100%
+              color-mix(in srgb, ${accent} 88%, #111111) 0%,
+              color-mix(in srgb, ${accent} 48%, #0a0a0a) 52%,
+              #050505 100%
             )
           `,
         }}
@@ -193,7 +193,7 @@ export default function Login() {
                     type="button"
                     onClick={handleResetPassword}
                     disabled={loading}
-                    className="text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+                    className="text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Olvidé mi contraseña
                   </button>
@@ -222,7 +222,7 @@ export default function Login() {
               disabled={loading}
               className="ui-btn-submit w-full text-white py-3 mt-1 disabled:opacity-50"
               style={{
-                background: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 70%, #0f172a) 100%)`,
+                background: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 70%, #0a0a0a) 100%)`,
               }}
             >
               {loading ? 'Cargando…' : isRegister ? 'Crear cuenta' : 'Entrar'}

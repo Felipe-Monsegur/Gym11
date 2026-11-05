@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 // Configuración de Firebase
@@ -19,7 +19,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Inicializar servicios
-export const db = getFirestore(app);
+// Caché persistente: lo que se anota sin señal sobrevive a cerrar la app y se sube al volver.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
 export const auth = getAuth(app);
 
 export default app;

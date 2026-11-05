@@ -10,10 +10,18 @@ export default {
         sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
-        panel: '1rem',
+        panel: '1.25rem',
+        soft: '1rem',
+        pill: '999px',
       },
       boxShadow: {
-        panel: '0 12px 32px -18px rgba(0, 0, 0, 0.45)',
+        panel: '0 4px 20px rgba(20, 20, 50, 0.08)',
+        soft: '0 4px 16px rgba(20, 20, 50, 0.05)',
+      },
+      colors: {
+        canvas: 'var(--app-bg)',
+        surface: 'var(--surface)',
+        muted: 'var(--text-muted)',
       },
     },
   },

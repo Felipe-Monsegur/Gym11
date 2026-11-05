@@ -30,19 +30,29 @@ export interface WorkoutSet {
   completed?: boolean;
 }
 
+/** total = barra/máquina (peso total); dumbbell = mancuernas (peso de cada una, "kg c/u"). */
+export type Equipment = 'total' | 'dumbbell';
+
 export interface WorkoutExercise {
   exerciseId: string;
   sets: WorkoutSet[];
   notes?: string;
+  /** Sin valor = 'total' (datos viejos). */
+  equipment?: Equipment;
 }
+
+/** Sin valor = 'done' (datos viejos). */
+export type WorkoutStatus = 'in_progress' | 'done';
 
 export interface Workout {
   id: string;
   date: string; // YYYY-MM-DD
   title: string;
   notes?: string;
+  /** Solo en entrenamientos viejos; ya no se edita. */
   durationMinutes?: number;
   exercises: WorkoutExercise[];
+  status?: WorkoutStatus;
   userId: string;
   createdAt: string;
 }

@@ -24,6 +24,9 @@ import {
 import { sortByDisplayOrder, sortExercisesByMuscleGroup } from '../utils/displayOrder';
 import { MuscleGroup, Exercise, AccessRequest, AllowedUser, TrackingMode } from '../types';
 import Modal from '../components/Modal';
+import HamburgerMenuDropdown from '../components/HamburgerMenuDropdown';
+import EmptyState from '../components/ui/EmptyState';
+import Skeleton from '../components/ui/Skeleton';
 import ConfirmModal from '../components/ConfirmModal';
 
 const DEFAULT_COLOR = '#3b82f6';
@@ -40,7 +43,7 @@ export default function Management() {
   const { muscleGroups, exercises, workouts, refresh } = useData();
   const { user, isAdmin } = useAuth();
   const { showToast } = useToast();
-  const { theme, headerColor } = useTheme();
+  const { headerColor } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('muscleGroups');
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [allowedUsersList, setAllowedUsersList] = useState<AllowedUser[]>([]);
@@ -403,13 +406,15 @@ export default function Management() {
       />
 
       <div className="space-y-4 sm:space-y-6">
-        <h1 className={`text-xl sm:text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-          Gestión
-        </h1>
+        <div>
+          <h1 className="ui-page-title">Gestión</h1>
+          <p className="ui-page-subtitle">Grupos musculares, ejercicios y acceso.</p>
+        </div>
 
         {/* Tabs */}
         <div className="ui-tabs">
           <button
+            type="button"
             onClick={() => setActiveTab('muscleGroups')}
             className={`ui-label ui-label-md ui-tab inline-flex items-center gap-1.5 ${activeTab === 'muscleGroups' ? 'ui-tab-active' : ''}`}
             style={{ ['--tab-accent' as string]: headerColor }}
@@ -420,6 +425,7 @@ export default function Management() {
             Grupos musculares
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('exercises')}
             className={`ui-label ui-label-md ui-tab inline-flex items-center gap-1.5 ${activeTab === 'exercises' ? 'ui-tab-active' : ''}`}
             style={{ ['--tab-accent' as string]: headerColor }}
@@ -431,6 +437,7 @@ export default function Management() {
           </button>
           {isAdmin && (
             <button
+              type="button"
               onClick={() => setActiveTab('access')}
               className={`ui-label ui-label-md ui-tab inline-flex items-center gap-1.5 ${activeTab === 'access' ? 'ui-tab-active' : ''}`}
               style={{ ['--tab-accent' as string]: headerColor }}
@@ -471,12 +478,13 @@ export default function Management() {
                 </div>
                 <div className="form-group">
                   <label>Color</label>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
                     <input
                       type="color"
+                      aria-label="Color: selector"
                       value={muscleGroupFormData.color}
                       onChange={(e) => setMuscleGroupFormData({ ...muscleGroupFormData, color: e.target.value.toUpperCase() })}
-                      className="w-16 h-12 rounded border-2 border-gray-600 cursor-pointer"
+                      className="w-11 h-11 shrink-0 cursor-pointer rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-2)] p-1"
                     />
                     <input
                       type="text"
@@ -505,17 +513,14 @@ export default function Management() {
                       className="mt-1"
                     />
                     <span>
-                      <span className="block text-[var(--text)]">Cardio (repeticiones y minutos)</span>
-                      <span className="block text-xs text-[var(--text-muted)] mt-0.5">
+                      <span className="block text-[var(--text)] normal-case tracking-normal">Cardio (repeticiones y minutos)</span>
+                      <span className="block ui-caption mt-0.5 normal-case tracking-normal font-normal">
                         Sin peso en kg; cada serie se registra con reps y minutos.
                       </span>
                     </span>
                   </label>
                 </div>
-                <div className="flex gap-2">
-                  <button type="submit" className="ui-btn-submit flex-1 bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700">
-                    Guardar
-                  </button>
+                <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -523,33 +528,32 @@ export default function Management() {
                       setEditingMuscleGroup(null);
                       setMuscleGroupFormData(emptyMuscleGroupForm());
                     }}
-                    className={`px-4 py-2.5 rounded-lg transition-colors ${
-                      theme === 'dark' ? 'bg-gray-600 text-white hover:bg-gray-700' : 'bg-gray-300 text-gray-800 hover:bg-gray-400'
-                    }`}
+                    className="ui-btn ui-btn-secondary w-full"
                   >
                     Cancelar
+                  </button>
+                  <button type="submit" className="ui-btn ui-btn-primary w-full">
+                    Guardar
                   </button>
                 </div>
               </form>
             </Modal>
 
             <div className="ui-panel p-3 sm:p-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3 sm:mb-4">
+              <div className="flex justify-between items-center gap-3 mb-3 sm:mb-4">
                 <h2 className="ui-label ui-label-lg">Grupos musculares</h2>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => void handleLoadInitialPack()}
-                    disabled={loadingPack}
-                    className={`px-3 h-10 rounded-md text-sm font-medium transition-colors disabled:opacity-50 ${
-                      theme === 'dark'
-                        ? 'bg-white/10 text-[var(--text)] hover:bg-white/15'
-                        : 'bg-black/5 text-[var(--text)] hover:bg-black/10'
-                    }`}
-                    title="Agrega grupos y ejercicios del pack que te falten"
-                  >
-                    {loadingPack ? 'Cargando…' : 'Cargar pack inicial'}
-                  </button>
+                  <HamburgerMenuDropdown align="right" title="Más opciones">
+                    <button
+                      type="button"
+                      onClick={() => void handleLoadInitialPack()}
+                      disabled={loadingPack}
+                      className={`ui-menu-item${loadingPack ? ' is-disabled' : ''}`}
+                      title="Agrega grupos y ejercicios del pack que te falten"
+                    >
+                      {loadingPack ? 'Cargando…' : 'Cargar pack inicial'}
+                    </button>
+                  </HamburgerMenuDropdown>
                   <button
                     type="button"
                     onClick={() => {
@@ -557,10 +561,11 @@ export default function Management() {
                       setEditingMuscleGroup(null);
                       setMuscleGroupFormData(emptyMuscleGroupForm());
                     }}
-                    className="inline-flex items-center justify-center h-10 w-10 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                    className="ui-icon-btn ui-icon-btn-primary"
                     title="Nuevo grupo"
+                    aria-label="Nuevo grupo muscular"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                   </button>
@@ -573,10 +578,10 @@ export default function Management() {
                   placeholder="Buscar grupo..."
                   value={muscleGroupSearchTerm}
                   onChange={(e) => setMuscleGroupSearchTerm(e.target.value)}
-                  className="ui-input text-sm"
+                  className="ui-input"
                 />
                 {!muscleGroupSearchTerm.trim() && muscleGroupsSorted.length > 1 && (
-                  <p className="text-xs mt-2 text-[var(--text-muted)]">↑ ↓ define el orden en formularios y listas.</p>
+                  <p className="ui-caption mt-2">↑ ↓ define el orden en formularios y listas.</p>
                 )}
               </div>
 
@@ -589,6 +594,7 @@ export default function Management() {
                           type="button"
                           disabled={reorderingMuscleGroups || idx === 0}
                           onClick={() => moveMuscleGroup(group.id, 'up')}
+                          aria-label="Subir"
                           className="ui-list-item-btn px-1.5 py-0.5 text-sm leading-none disabled:opacity-30"
                         >
                           ↑
@@ -597,6 +603,7 @@ export default function Management() {
                           type="button"
                           disabled={reorderingMuscleGroups || idx === muscleGroupsSorted.length - 1}
                           onClick={() => moveMuscleGroup(group.id, 'down')}
+                          aria-label="Bajar"
                           className="ui-list-item-btn px-1.5 py-0.5 text-sm leading-none disabled:opacity-30"
                         >
                           ↓
@@ -607,27 +614,34 @@ export default function Management() {
                       <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: group.color }} />
                       <span className="text-base text-[var(--text)] truncate">{group.name}</span>
                       {group.trackingMode === 'cardio' && (
-                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500 shrink-0">
+                        <span
+                          className="ui-label ui-label-xs px-1.5 py-0.5 rounded-pill shrink-0"
+                          style={{ color: headerColor, background: `color-mix(in srgb, ${headerColor} 14%, transparent)` }}
+                        >
                           Cardio
                         </span>
                       )}
                     </div>
                     <div className="flex gap-1">
                       <button
+                        type="button"
                         onClick={() => handleMuscleGroupEdit(group)}
-                        className={`p-2 rounded transition-colors ${theme === 'dark' ? 'text-blue-400 hover:bg-blue-500/20' : 'text-blue-600 hover:bg-blue-100'}`}
+                        className="ui-row-action is-edit"
                         title="Editar"
+                        aria-label="Editar"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleMuscleGroupDelete(group.id)}
-                        className={`p-2 rounded transition-colors ${theme === 'dark' ? 'text-red-400 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-100'}`}
+                        className="ui-row-action is-delete"
                         title="Eliminar"
+                        aria-label="Eliminar"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                       </button>
@@ -635,9 +649,7 @@ export default function Management() {
                   </div>
                 ))}
                 {filteredMuscleGroups.length === 0 && (
-                  <p className="text-center py-8 text-[var(--text-muted)]">
-                    {muscleGroupSearchTerm ? 'No se encontraron grupos' : 'No hay grupos musculares'}
-                  </p>
+                  <EmptyState title={muscleGroupSearchTerm ? 'No se encontraron grupos' : 'No hay grupos musculares'} />
                 )}
               </div>
             </div>
@@ -683,7 +695,7 @@ export default function Management() {
                     ))}
                   </select>
                   {exerciseFormData.muscleGroupId && (
-                    <p className="text-xs text-[var(--text-muted)] mt-1.5 flex items-center gap-2">
+                    <p className="ui-caption mt-1.5 flex items-center gap-2">
                       <span
                         className="inline-block w-3 h-3 rounded"
                         style={{ backgroundColor: getGroupColor(exerciseFormData.muscleGroupId) }}
@@ -702,10 +714,7 @@ export default function Management() {
                     className="ui-input"
                   />
                 </div>
-                <div className="flex gap-2">
-                  <button type="submit" className="ui-btn-submit flex-1 bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700">
-                    Guardar
-                  </button>
+                <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -713,18 +722,19 @@ export default function Management() {
                       setEditingExercise(null);
                       setExerciseFormData({ name: '', muscleGroupId: '', notes: '' });
                     }}
-                    className={`px-4 py-2.5 rounded-lg transition-colors ${
-                      theme === 'dark' ? 'bg-gray-600 text-white hover:bg-gray-700' : 'bg-gray-300 text-gray-800 hover:bg-gray-400'
-                    }`}
+                    className="ui-btn ui-btn-secondary w-full"
                   >
                     Cancelar
+                  </button>
+                  <button type="submit" className="ui-btn ui-btn-primary w-full">
+                    Guardar
                   </button>
                 </div>
               </form>
             </Modal>
 
             <div className="ui-panel p-3 sm:p-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3 sm:mb-4">
+              <div className="flex justify-between items-center gap-3 mb-3 sm:mb-4">
                 <h2 className="ui-label ui-label-lg">Ejercicios</h2>
                 <button
                   type="button"
@@ -733,10 +743,11 @@ export default function Management() {
                     setEditingExercise(null);
                     setExerciseFormData({ name: '', muscleGroupId: '', notes: '' });
                   }}
-                  className="inline-flex items-center justify-center h-10 w-10 rounded-md bg-blue-600 text-white hover:bg-blue-700 shrink-0"
+                  className="ui-icon-btn ui-icon-btn-primary shrink-0"
                   title="Nuevo ejercicio"
+                  aria-label="Nuevo ejercicio"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                 </button>
@@ -748,12 +759,12 @@ export default function Management() {
                   placeholder="Buscar ejercicio..."
                   value={exerciseSearchTerm}
                   onChange={(e) => setExerciseSearchTerm(e.target.value)}
-                  className="ui-input text-sm"
+                  className="ui-input"
                 />
                 <select
                   value={exerciseFilterGroup}
                   onChange={(e) => setExerciseFilterGroup(e.target.value)}
-                  className="ui-input text-sm"
+                  className="ui-input"
                 >
                   <option value="">Todos los grupos</option>
                   {muscleGroupsSorted.map((g) => (
@@ -762,7 +773,7 @@ export default function Management() {
                 </select>
               </div>
               {!exerciseSearchTerm.trim() && !exerciseFilterGroup && exercisesSorted.length > 1 && (
-                <p className="text-xs mb-3 text-[var(--text-muted)]">
+                <p className="ui-caption mb-3">
                   Ordenados por grupo. ↑ ↓ cambia el orden dentro del mismo grupo.
                 </p>
               )}
@@ -785,7 +796,7 @@ export default function Management() {
                             className="w-2.5 h-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: getGroupColor(exercise.muscleGroupId) }}
                           />
-                          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                          <span className="ui-label ui-label-xs">
                             {getMuscleGroupName(exercise.muscleGroupId) || 'Sin grupo'}
                           </span>
                         </div>
@@ -797,6 +808,7 @@ export default function Management() {
                               type="button"
                               disabled={reorderingExercises || indexInGroup === 0}
                               onClick={() => moveExercise(exercise.id, 'up')}
+                              aria-label="Subir"
                               className="ui-list-item-btn px-1.5 py-0.5 text-sm leading-none disabled:opacity-30"
                             >
                               ↑
@@ -807,6 +819,7 @@ export default function Management() {
                                 reorderingExercises || indexInGroup === groupExercises.length - 1
                               }
                               onClick={() => moveExercise(exercise.id, 'down')}
+                              aria-label="Bajar"
                               className="ui-list-item-btn px-1.5 py-0.5 text-sm leading-none disabled:opacity-30"
                             >
                               ↓
@@ -824,20 +837,24 @@ export default function Management() {
                         </div>
                         <div className="flex gap-1 shrink-0">
                           <button
+                            type="button"
                             onClick={() => handleExerciseEdit(exercise)}
-                            className={`p-2 rounded transition-colors ${theme === 'dark' ? 'text-blue-400 hover:bg-blue-500/20' : 'text-blue-600 hover:bg-blue-100'}`}
+                            className="ui-row-action is-edit"
                             title="Editar"
+                            aria-label="Editar"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleExerciseDelete(exercise.id)}
-                            className={`p-2 rounded transition-colors ${theme === 'dark' ? 'text-red-400 hover:bg-red-500/20' : 'text-red-600 hover:bg-red-100'}`}
+                            className="ui-row-action is-delete"
                             title="Eliminar"
+                            aria-label="Eliminar"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </button>
@@ -847,9 +864,7 @@ export default function Management() {
                   );
                 })}
                 {filteredExercises.length === 0 && (
-                  <p className="text-center py-8 text-[var(--text-muted)]">
-                    {exerciseSearchTerm || exerciseFilterGroup ? 'No se encontraron ejercicios' : 'No hay ejercicios'}
-                  </p>
+                  <EmptyState title={exerciseSearchTerm || exerciseFilterGroup ? 'No se encontraron ejercicios' : 'No hay ejercicios'} />
                 )}
               </div>
             </div>
@@ -865,20 +880,24 @@ export default function Management() {
                 type="button"
                 onClick={() => void loadAccessData()}
                 disabled={accessLoading}
-                className="ui-list-item-btn px-3 py-1.5 text-sm"
+                className="ui-btn ui-btn-secondary"
+                data-loading={accessLoading}
               >
-                {accessLoading ? 'Cargando...' : 'Actualizar'}
+                Actualizar
               </button>
             </div>
 
             {accessLoading && accessRequests.length === 0 ? (
-              <p className="text-[var(--text-muted)]">Cargando...</p>
+              <div className="space-y-2" aria-busy="true" aria-label="Cargando">
+                <Skeleton className="h-14" />
+                <Skeleton className="h-14" />
+              </div>
             ) : (
               <>
                 <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-[var(--text-muted)]">Pendientes</h3>
+                  <h3 className="ui-label ui-label-sm">Pendientes</h3>
                   {accessRequests.filter((r) => r.status === 'pending').length === 0 && (
-                    <p className="text-sm text-[var(--text-muted)]">No hay pedidos pendientes.</p>
+                    <p className="ui-caption">No hay pedidos pendientes.</p>
                   )}
                   {accessRequests
                     .filter((r) => r.status === 'pending')
@@ -888,7 +907,7 @@ export default function Management() {
                           {req.photoURL ? (
                             <img src={req.photoURL} alt="" className="w-9 h-9 rounded-full" />
                           ) : (
-                            <div className="w-9 h-9 rounded-full bg-gray-500 flex items-center justify-center text-white text-sm">
+                            <div className="w-9 h-9 rounded-full bg-[var(--surface-3)] flex items-center justify-center text-[var(--text)] text-sm font-semibold">
                               {(req.displayName || req.email || '?')[0].toUpperCase()}
                             </div>
                           )}
@@ -901,14 +920,15 @@ export default function Management() {
                           <button
                             type="button"
                             onClick={() => void handleApproveRequest(req)}
-                            className="px-3 py-1.5 rounded-lg text-sm bg-green-600 text-white hover:bg-green-700"
+                            className="ui-btn ui-btn-primary"
+                            style={{ ['--btn-color' as string]: '#16a34a' }}
                           >
                             Aprobar
                           </button>
                           <button
                             type="button"
                             onClick={() => void handleDenyRequest(req)}
-                            className="px-3 py-1.5 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700"
+                            className="ui-btn ui-btn-secondary"
                           >
                             Rechazar
                           </button>
@@ -918,23 +938,25 @@ export default function Management() {
                 </div>
 
                 <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-[var(--text-muted)]">Usuarios con acceso</h3>
+                  <h3 className="ui-label ui-label-sm">Usuarios con acceso</h3>
                   {allowedUsersList.length === 0 && (
-                    <p className="text-sm text-[var(--text-muted)]">No hay usuarios en la lista.</p>
+                    <p className="ui-caption">No hay usuarios en la lista.</p>
                   )}
                   {allowedUsersList.map((allowed) => (
                     <div key={allowed.userId || allowed.id} className="ui-list-item flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3">
                       <div className="min-w-0">
                         <div className="font-medium truncate text-[var(--text)]">
                           {allowed.email}
-                          {allowed.isAdmin && <span className="ml-2 text-xs font-semibold text-amber-500">admin</span>}
+                          {allowed.isAdmin && <span className="ml-2 ui-label ui-label-xs" style={{ color: '#f59e0b' }}>
+                              admin
+                            </span>}
                         </div>
                       </div>
                       {!allowed.isAdmin && allowed.id !== user?.uid && (
                         <button
                           type="button"
                           onClick={() => handleRevokeUser(allowed)}
-                          className="ui-list-item-btn px-3 py-1.5 text-sm"
+                          className="ui-btn ui-btn-secondary"
                         >
                           Revocar
                         </button>

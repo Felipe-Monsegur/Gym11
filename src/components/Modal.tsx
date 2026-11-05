@@ -1,6 +1,12 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useTheme } from '../context/ThemeContext';
+import {
+  useBodyScrollLock,
+  useDialogFocus,
+  useEscapeToClose,
+  useFrozenWhileClosed,
+  usePresence,
+} from './ui/dialogHooks';
 
 interface ModalProps {
   isOpen: boolean;
@@ -20,75 +26,61 @@ export default function Modal({
   accentColor,
   subtitle,
 }: ModalProps) {
-  const { theme } = useTheme();
+  const { mounted, closing } = usePresence(isOpen);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+  useBodyScrollLock(isOpen);
+  useEscapeToClose(isOpen, onClose);
+  useDialogFocus(isOpen, dialogRef);
 
-  if (!isOpen) return null;
+  const content = useFrozenWhileClosed(isOpen, children);
+  const frozenTitle = useFrozenWhileClosed(isOpen, title);
+  const frozenSubtitle = useFrozenWhileClosed(isOpen, subtitle);
+
+  if (!mounted) return null;
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-3 sm:p-4"
-      onClick={onClose}
-    >
+    <div className={`ui-overlay ${closing ? 'is-closing' : ''}`} onClick={onClose}>
       <div
-        className="ui-panel w-[calc(100%-0.5rem)] sm:w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`ui-panel ui-dialog ${closing ? 'is-closing' : ''}`}
         onClick={(e) => e.stopPropagation()}
         style={
           accentColor
-            ? { boxShadow: `0 0 0 1px color-mix(in srgb, ${accentColor} 35%, transparent), var(--shadow-panel)` }
+            ? { boxShadow: `0 0 0 1px color-mix(in srgb, ${accentColor} 35%, transparent), var(--shadow-lg)` }
             : undefined
         }
       >
-        <div
-          className={`sticky top-0 z-10 flex items-start justify-between gap-3 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b ${
-            theme === 'dark' ? 'border-white/10 bg-[var(--surface)]' : 'border-black/10 bg-[var(--surface)]'
-          }`}
-        >
-          <div className="min-w-0">
-            <div
-              className="h-1 w-10 rounded-full mb-2.5"
-              style={{ backgroundColor: accentColor || 'var(--header-color)' }}
-            />
-            <h2
-              className={`text-lg sm:text-xl font-bold tracking-tight truncate ${
-                accentColor ? '' : theme === 'dark' ? 'text-white' : 'text-gray-900'
-              }`}
-              style={accentColor ? { color: accentColor } : undefined}
-            >
-              {title}
-            </h2>
-            {subtitle && (
-              <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                {subtitle}
-              </p>
-            )}
+        <div className="sticky top-0 z-10 bg-[var(--surface)] border-b border-[var(--border)]">
+          <div className="ui-sheet-grabber" aria-hidden="true" />
+          <div className="flex items-start justify-between gap-3 px-4 sm:px-6 pt-3 sm:pt-5 pb-3">
+            <div className="min-w-0 pt-1">
+              <div
+                className="h-1 w-10 rounded-full mb-2.5"
+                style={{ backgroundColor: accentColor || 'var(--header-color)' }}
+              />
+              <h2
+                id={titleId}
+                className="ui-section-title truncate"
+                style={accentColor ? { color: accentColor } : undefined}
+              >
+                {frozenTitle}
+              </h2>
+              {frozenSubtitle && <p className="ui-caption mt-1">{frozenSubtitle}</p>}
+            </div>
+            <button type="button" onClick={onClose} className="ui-icon-btn" aria-label="Cerrar">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-              theme === 'dark'
-                ? 'text-slate-400 hover:text-white hover:bg-white/10'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-black/5'
-            }`}
-            aria-label="Cerrar"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
-        <div className="p-4 sm:p-6">{children}</div>
+        <div className="p-4 sm:p-6">{content}</div>
       </div>
     </div>,
     document.body

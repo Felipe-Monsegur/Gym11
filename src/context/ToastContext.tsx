@@ -28,9 +28,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col items-end space-y-2 pointer-events-none" style={{ zIndex: 9999, position: 'fixed' }}>
+      <div
+        className="fixed inset-x-0 top-0 z-[9999] flex flex-col items-center gap-2 px-4 pointer-events-none sm:inset-x-auto sm:right-4 sm:items-end sm:px-0"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+        aria-live="polite"
+      >
         {toasts.map((toast) => (
-          <div key={toast.id} className="pointer-events-auto">
+          <div key={toast.id} className="pointer-events-auto w-full max-w-sm sm:w-96">
             <Toast
               message={toast.message}
               type={toast.type}

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { getMyAccessRequest, requestAccess } from '../services/firebaseService';
 import { AccessRequest } from '../types';
+import Skeleton from '../components/ui/Skeleton';
 
 export default function NotAuthorized() {
   const navigate = useNavigate();
@@ -97,7 +98,10 @@ export default function NotAuthorized() {
           <p className="text-sm text-[var(--text-muted)] mb-1">{user?.email}</p>
 
           {loading ? (
-            <p className="text-[var(--text-muted)] py-4">Cargando…</p>
+            <div className="space-y-3 py-2" aria-busy="true" aria-label="Cargando">
+              <Skeleton className="h-11" />
+              <Skeleton className="h-11" />
+            </div>
           ) : (
             <>
               {!status && (
@@ -111,7 +115,7 @@ export default function NotAuthorized() {
                     disabled={submitting}
                     className="ui-btn-submit w-full text-white py-3 disabled:opacity-50 mb-3"
                     style={{
-                      background: `linear-gradient(135deg, ${loginBgColor} 0%, color-mix(in srgb, ${loginBgColor} 72%, #0f172a) 100%)`,
+                      background: `linear-gradient(135deg, ${loginBgColor} 0%, color-mix(in srgb, ${loginBgColor} 72%, #0a0a0a) 100%)`,
                     }}
                   >
                     {submitting ? 'Enviando…' : 'Solicitar acceso'}
@@ -141,7 +145,7 @@ export default function NotAuthorized() {
                     disabled={submitting}
                     className="ui-btn-submit w-full text-white py-3 disabled:opacity-50 mb-3"
                     style={{
-                      background: `linear-gradient(135deg, ${loginBgColor} 0%, color-mix(in srgb, ${loginBgColor} 72%, #0f172a) 100%)`,
+                      background: `linear-gradient(135deg, ${loginBgColor} 0%, color-mix(in srgb, ${loginBgColor} 72%, #0a0a0a) 100%)`,
                     }}
                   >
                     {submitting ? 'Enviando…' : 'Volver a solicitar'}

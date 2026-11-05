@@ -1,4 +1,4 @@
-import { Exercise, MuscleGroup, Workout, WorkoutExercise } from '../types';
+import { Equipment, Exercise, MuscleGroup, Workout, WorkoutExercise, WorkoutSet } from '../types';
 import { sortByDisplayOrder } from './displayOrder';
 
 /** Título del entrenamiento, o los grupos musculares si no hay título. */
@@ -39,6 +39,34 @@ export function getCardioExerciseIds(
   );
 }
 
+/** Peso que mueve la serie: con mancuernas se anota el de cada una, así que cuenta doble. */
+export function setLoad(set: Pick<WorkoutSet, 'weight'>, equipment?: Equipment): number {
+  const weight = set.weight || 0;
+  return equipment === 'dumbbell' ? weight * 2 : weight;
+}
+
+/** Entrenamiento que quedó abierto (el más reciente), si hay. */
+export function getInProgressWorkout(workouts: Workout[]): Workout | undefined {
+  return workouts.find((w) => w.status === 'in_progress');
+}
+
+/** Equipamiento con el que se hizo el ejercicio la última vez; si nunca, se deduce del nombre. */
+export function defaultEquipmentFor(
+  exerciseId: string,
+  exerciseName: string,
+  workouts: Workout[],
+  excludeWorkoutId?: string
+): Equipment {
+  for (const w of workouts) {
+    if (w.id === excludeWorkoutId) continue;
+    const match = w.exercises.find((e) => e.exerciseId === exerciseId);
+    // Los entrenamientos viejos no tienen el dato: en ese caso se deduce del nombre.
+    if (match?.equipment) return match.equipment;
+    if (match) break;
+  }
+  return /mancuerna/i.test(exerciseName) ? 'dumbbell' : 'total';
+}
+
 export function workoutVolume(
   workout: Workout,
   cardioExerciseIds?: Set<string>
@@ -48,7 +76,7 @@ export function workoutVolume(
     return (
       total +
       exercise.sets.reduce((setTotal, set) => {
-        return setTotal + set.reps * set.weight;
+        return setTotal + set.reps * setLoad(set, exercise.equipment);
       }, 0)
     );
   }, 0);
@@ -59,7 +87,7 @@ export function exerciseVolume(
   isCardio = false
 ): number {
   if (isCardio) return 0;
-  return exercise.sets.reduce((total, set) => total + set.reps * set.weight, 0);
+  return exercise.sets.reduce((total, set) => total + set.reps * setLoad(set, exercise.equipment), 0);
 }
 
 export function weekWorkouts(workouts: Workout[], referenceDate: Date = new Date()): Workout[] {
@@ -128,20 +156,33 @@ export function daysSinceLastWorkout(workouts: Workout[], referenceDate: Date = 
 /** Meta semanal por defecto para quien entrena 3–4 veces por semana. */
 export const DEFAULT_WEEKLY_GOAL = 4;
 
+export interface PersonalRecord {
+  /** Lo anotado (por mancuerna si equipment = dumbbell). */
+  weight: number;
+  /** Carga total, para comparar barra contra mancuernas. */
+  load: number;
+  equipment: Equipment;
+  reps: number;
+  date: string;
+}
+
 export function maxWeightByExercise(
   workouts: Workout[],
   cardioExerciseIds?: Set<string>
-): Map<string, { weight: number; reps: number; date: string }> {
-  const result = new Map<string, { weight: number; reps: number; date: string }>();
+): Map<string, PersonalRecord> {
+  const result = new Map<string, PersonalRecord>();
 
   for (const workout of workouts) {
     for (const exercise of workout.exercises) {
       if (cardioExerciseIds?.has(exercise.exerciseId)) continue;
       for (const set of exercise.sets) {
         const current = result.get(exercise.exerciseId);
-        if (!current || set.weight > current.weight) {
+        const load = setLoad(set, exercise.equipment);
+        if (!current || load > current.load) {
           result.set(exercise.exerciseId, {
             weight: set.weight,
+            load,
+            equipment: exercise.equipment ?? 'total',
             reps: set.reps,
             date: workout.date,
           });
@@ -195,7 +236,7 @@ function startOfWeekMonday(reference: Date): Date {
   return d;
 }
 
-function toDateKey(d: Date): string {
+export function toDateKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');

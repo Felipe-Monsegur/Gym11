@@ -1,6 +1,13 @@
-import { useEffect } from 'react';
+import { useId, useRef, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { useTheme } from '../context/ThemeContext';
+import StatusIcon, { STATUS_COLORS } from './ui/StatusIcon';
+import {
+  useBodyScrollLock,
+  useDialogFocus,
+  useEscapeToClose,
+  useFrozenWhileClosed,
+  usePresence,
+} from './ui/dialogHooks';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -23,90 +30,58 @@ export default function ConfirmModal({
   cancelText = 'Cancelar',
   type = 'danger',
 }: ConfirmModalProps) {
-  const { theme } = useTheme();
+  const { mounted, closing } = usePresence(isOpen);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const messageId = useId();
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+  useBodyScrollLock(isOpen);
+  useEscapeToClose(isOpen, onClose);
+  useDialogFocus(isOpen, dialogRef);
 
-  if (!isOpen) return null;
+  const frozen = useFrozenWhileClosed(isOpen, { title, message, confirmText, cancelText, type });
+
+  if (!mounted) return null;
 
   const handleConfirm = () => {
     onConfirm();
     onClose();
   };
 
-  const typeStyles = {
-    danger: {
-      confirmBg: theme === 'dark' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600',
-      icon: '⚠️',
-      iconColor: 'text-red-500',
-    },
-    warning: {
-      confirmBg: theme === 'dark' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-yellow-500 hover:bg-yellow-600',
-      icon: '⚠️',
-      iconColor: 'text-yellow-500',
-    },
-    info: {
-      confirmBg: theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600',
-      icon: 'ℹ️',
-      iconColor: 'text-blue-500',
-    },
-  };
-
-  const styles = typeStyles[type];
-
   return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-3 sm:p-4"
-      onClick={onClose}
-    >
+    <div className={`ui-overlay is-centered ${closing ? 'is-closing' : ''}`} onClick={onClose}>
       <div
-        className="ui-panel max-w-md w-full mx-1 sm:mx-4 overflow-hidden"
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={messageId}
+        tabIndex={-1}
+        className={`ui-panel ui-alert ${closing ? 'is-closing' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 sm:p-8">
-          <div className="flex items-start gap-4 mb-6">
-            <div className={`text-4xl flex-shrink-0 ${styles.iconColor}`}>
-              {styles.icon}
-            </div>
-            <div className="flex-1">
-              <h3 className={`text-xl sm:text-2xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                {title}
-              </h3>
-              <p className={`text-sm sm:text-base ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
-                {message}
-              </p>
-            </div>
-          </div>
+        <div className="flex flex-col items-center text-center px-5 pt-6 pb-5">
+          <StatusIcon type={frozen.type} size={3} />
+          <h3 id={titleId} className="ui-section-title mt-4">
+            {frozen.title}
+          </h3>
+          <p id={messageId} className="mt-2 text-[0.9375rem] leading-snug text-[var(--text-muted)] whitespace-pre-wrap">
+            {frozen.message}
+          </p>
+        </div>
 
-          <div className="flex gap-3 sm:gap-4 justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-[var(--radius-control)] transition-colors font-medium ${
-                theme === 'dark'
-                  ? 'bg-white/10 text-white hover:bg-white/15'
-                  : 'bg-slate-200 text-slate-800 hover:bg-slate-300'
-              }`}
-            >
-              {cancelText}
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-[var(--radius-control)] transition-colors font-medium text-white ${styles.confirmBg}`}
-            >
-              {confirmText}
-            </button>
-          </div>
+        <div className="grid grid-cols-2 gap-2 px-4 pb-4">
+          <button type="button" onClick={onClose} className="ui-btn ui-btn-secondary w-full">
+            {frozen.cancelText}
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="ui-btn ui-btn-primary w-full"
+            style={{ '--btn-color': STATUS_COLORS[frozen.type] } as CSSProperties}
+          >
+            {frozen.confirmText}
+          </button>
         </div>
       </div>
     </div>,

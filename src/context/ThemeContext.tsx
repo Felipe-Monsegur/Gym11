@@ -53,7 +53,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const headerColor = theme === 'dark' ? headerColorDark : headerColorLight;
   
   // Colores según el tema
-  const loginBgColor = theme === 'dark' ? '#A80000' : '#1e3a8a';
+  const loginBgColor = theme === 'dark' ? headerColorDark : headerColorLight;
 
   // Cargar tema y preferencias del usuario al iniciar sesión
   useEffect(() => {

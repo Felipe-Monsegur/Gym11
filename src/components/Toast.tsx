@@ -1,4 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import StatusIcon from './ui/StatusIcon';
+import { DIALOG_EXIT_MS } from './ui/dialogHooks';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -10,52 +12,39 @@ interface ToastProps {
 }
 
 export default function Toast({ message, type, onClose, duration = 4000 }: ToastProps) {
+  const [closing, setClosing] = useState(false);
+  // onClose cambia en cada render del provider; un ref evita reiniciar el timer
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onClose();
-    }, duration);
+    const timer = window.setTimeout(() => setClosing(true), duration);
+    return () => window.clearTimeout(timer);
+  }, [duration]);
 
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
-
-  const typeStyles = {
-    success: {
-      bg: 'bg-green-600',
-      border: 'border-green-500',
-      icon: '✓',
-    },
-    error: {
-      bg: 'bg-red-600',
-      border: 'border-red-500',
-      icon: '✕',
-    },
-    info: {
-      bg: 'bg-blue-600',
-      border: 'border-blue-500',
-      icon: 'ℹ',
-    },
-    warning: {
-      bg: 'bg-yellow-600',
-      border: 'border-yellow-500',
-      icon: '⚠',
-    },
-  };
-
-  const style = typeStyles[type];
+  useEffect(() => {
+    if (!closing) return;
+    const timer = window.setTimeout(() => onCloseRef.current(), DIALOG_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [closing]);
 
   return (
     <div
-      className={`${style.bg} ${style.border} border-l-4 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 min-w-[300px] max-w-[500px] animate-slide-in-right`}
+      role={type === 'error' ? 'alert' : 'status'}
+      className={`ui-toast ${closing ? 'is-closing' : ''}`}
     >
-      <span className="text-2xl font-bold flex-shrink-0">{style.icon}</span>
-      <p className="flex-1 text-sm font-medium">{message}</p>
+      <StatusIcon type={type} size={2} />
+      <p className="flex-1 min-w-0 text-sm font-medium leading-snug">{message}</p>
       <button
-        onClick={onClose}
-        className="text-white hover:text-gray-200 text-xl font-bold flex-shrink-0 ml-2 transition-colors"
+        type="button"
+        onClick={() => setClosing(true)}
+        className="ui-icon-btn ui-icon-btn-ghost !w-9 !h-9 !min-w-0 !min-h-0"
+        aria-label="Cerrar notificación"
       >
-        ×
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
       </button>
     </div>
   );
 }
-

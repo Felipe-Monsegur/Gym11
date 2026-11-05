@@ -1,44 +1,258 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import { addWorkout, updateWorkout } from '../services/firebaseService';
-import { WorkoutExercise, WorkoutSet } from '../types';
+import {
+  createWorkoutWithId,
+  deleteWorkout,
+  newWorkoutId,
+  updateWorkout,
+} from '../services/firebaseService';
+import { Equipment, Workout, WorkoutExercise, WorkoutSet, WorkoutStatus } from '../types';
 import { sortByDisplayOrder, sortExercisesByMuscleGroup } from '../utils/displayOrder';
+import { defaultEquipmentFor, getInProgressWorkout } from '../utils/gymStats';
 import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
 import DateInput from '../components/DateInput';
+import PanelSkeleton from '../components/ui/PanelSkeleton';
+import EmptyState from '../components/ui/EmptyState';
+import { getTodayDateString } from '../utils/date';
 
-interface WorkoutExerciseForm extends WorkoutExercise {
+/** Las series se editan como texto: un campo vacío queda vacío (sin "0" adelante). */
+interface FormSet {
+  reps: string;
+  weight: string;
+  minutes: string;
+  completed?: boolean;
+}
+
+interface FormExercise {
   tempId: string;
+  exerciseId: string;
+  equipment: Equipment;
+  notes: string;
+  sets: FormSet[];
+}
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
+
+const AUTOSAVE_DELAY_MS = 800;
+/** Si el servidor no confirma en este tiempo, asumimos que no hay señal (queda en la caché local). */
+const OFFLINE_HINT_MS = 4000;
+
+const numToStr = (n?: number) => (n ? String(n) : '');
+const cleanInt = (v: string) => v.replace(/\D/g, '');
+const cleanDecimal = (v: string) => {
+  const normalized = v.replace(',', '.').replace(/[^0-9.]/g, '');
+  const [int, ...rest] = normalized.split('.');
+  return rest.length ? `${int}.${rest.join('')}` : int;
+};
+const strToNum = (v: string) => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+let tempCounter = 0;
+const nextTempId = () => `ex-${Date.now()}-${tempCounter++}`;
+
+function toFormExercise(e: WorkoutExercise): FormExercise {
+  return {
+    tempId: nextTempId(),
+    exerciseId: e.exerciseId,
+    equipment: e.equipment ?? 'total',
+    notes: e.notes || '',
+    sets: e.sets.map((s) => ({
+      reps: numToStr(s.reps),
+      weight: numToStr(s.weight),
+      minutes: numToStr(s.durationMinutes),
+      completed: s.completed,
+    })),
+  };
+}
+
+function toWorkoutExercise(e: FormExercise, cardio: boolean): WorkoutExercise {
+  return {
+    exerciseId: e.exerciseId,
+    notes: e.notes || undefined,
+    equipment: cardio ? undefined : e.equipment,
+    sets: e.sets.map((s) => {
+      const set: WorkoutSet = { reps: strToNum(s.reps), weight: cardio ? 0 : strToNum(s.weight) };
+      if (cardio) set.durationMinutes = strToNum(s.minutes);
+      if (s.completed != null) set.completed = s.completed;
+      return set;
+    }),
+  };
 }
 
 export default function WorkoutForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { workouts, exercises, muscleGroups, loading, refresh } = useData();
-  const { theme, headerColor } = useTheme();
+  const { workouts, exercises, muscleGroups, loading, upsertWorkout, removeWorkout } = useData();
   const { showToast } = useToast();
 
-  const isEditing = !!id;
-  const existingWorkout = useMemo(
-    () => (id ? workouts.find((w) => w.id === id) : null),
-    [id, workouts]
-  );
+  const existingWorkout = useMemo(() => (id ? workouts.find((w) => w.id === id) : undefined), [id, workouts]);
+  const inProgress = useMemo(() => getInProgressWorkout(workouts), [workouts]);
 
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => getTodayDateString());
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [durationMinutes, setDurationMinutes] = useState<number | ''>('');
-  const [workoutExercises, setWorkoutExercises] = useState<WorkoutExerciseForm[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<WorkoutStatus>('in_progress');
+  const [items, setItems] = useState<FormExercise[]>([]);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [finishing, setFinishing] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [replacingTempId, setReplacingTempId] = useState<string | null>(null);
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string>('');
   const [exerciseSearch, setExerciseSearch] = useState('');
+
+  // Carga el entrenamiento una sola vez por id: los autoguardados actualizan `workouts`
+  // y no deben pisar lo que se está escribiendo.
+  const hydratedIdRef = useRef<string | null>(null);
+  const lastSavedRef = useRef<string>('');
+  const timerRef = useRef<number | null>(null);
+  const creatingRef = useRef(false);
+  const errorToastShownRef = useRef(false);
+
+  const exerciseById = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
+  const groupById = useMemo(() => new Map(muscleGroups.map((g) => [g.id, g])), [muscleGroups]);
+
+  const isCardioExercise = useCallback(
+    (exerciseId: string) => {
+      const ex = exerciseById.get(exerciseId);
+      return ex ? groupById.get(ex.muscleGroupId)?.trackingMode === 'cardio' : false;
+    },
+    [exerciseById, groupById]
+  );
+
+  const getExerciseName = (exerciseId: string) => exerciseById.get(exerciseId)?.name || 'Ejercicio desconocido';
+  const getExerciseColor = (exerciseId: string) => {
+    const ex = exerciseById.get(exerciseId);
+    if (!ex) return '#6b7280';
+    return groupById.get(ex.muscleGroupId)?.color || ex.color || '#6b7280';
+  };
+  const getMuscleGroupName = (muscleGroupId: string) => groupById.get(muscleGroupId)?.name || '';
+
+  const buildWorkoutData = useCallback(
+    (overrideStatus?: WorkoutStatus): Omit<Workout, 'id' | 'createdAt'> => ({
+      date,
+      title: title.trim(),
+      notes: notes.trim(),
+      status: overrideStatus ?? status,
+      exercises: items.map((e) => toWorkoutExercise(e, isCardioExercise(e.exerciseId))),
+      userId: user?.uid ?? '',
+    }),
+    [date, title, notes, status, items, isCardioExercise, user]
+  );
+
+  useEffect(() => {
+    if (!existingWorkout || hydratedIdRef.current === existingWorkout.id) return;
+    hydratedIdRef.current = existingWorkout.id;
+    setDate(existingWorkout.date);
+    setTitle(existingWorkout.title);
+    setNotes(existingWorkout.notes || '');
+    setStatus(existingWorkout.status ?? 'done');
+    setItems(existingWorkout.exercises.map(toFormExercise));
+    lastSavedRef.current = '';
+  }, [existingWorkout]);
+
+  /** Espera la confirmación del servidor; si tarda, avisa que quedó guardado en el teléfono. */
+  const trackWrite = useCallback((write: Promise<void>) => {
+    setSaveState('saving');
+    const offlineTimer = window.setTimeout(() => setSaveState('offline'), OFFLINE_HINT_MS);
+    write
+      .then(() => {
+        setSaveState('saved');
+        errorToastShownRef.current = false;
+      })
+      .catch((error) => {
+        console.error(error);
+        setSaveState('error');
+        if (!errorToastShownRef.current) {
+          errorToastShownRef.current = true;
+          showToast('No se pudo guardar. Se reintenta con el próximo cambio.', 'warning');
+        }
+        lastSavedRef.current = '';
+      })
+      .finally(() => window.clearTimeout(offlineTimer));
+    return write;
+  }, [showToast]);
+
+  const saveNow = useCallback(
+    (overrideStatus?: WorkoutStatus) => {
+      if (!id || !existingWorkout || !user) return Promise.resolve();
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      const data = buildWorkoutData(overrideStatus);
+      const json = JSON.stringify(data);
+      if (json === lastSavedRef.current) return Promise.resolve();
+      lastSavedRef.current = json;
+      upsertWorkout({ ...existingWorkout, ...data, id });
+      return trackWrite(updateWorkout(id, data));
+    },
+    [id, existingWorkout, user, buildWorkoutData, upsertWorkout, trackWrite]
+  );
+
+  // Nuevo: al agregar el primer ejercicio se crea el entrenamiento "en curso" y se pasa a su URL.
+  useEffect(() => {
+    if (id || !user || items.length === 0 || creatingRef.current) return;
+    creatingRef.current = true;
+    const newId = newWorkoutId();
+    const data = buildWorkoutData('in_progress');
+    upsertWorkout({ ...data, id: newId, createdAt: new Date().toISOString() });
+    void trackWrite(createWorkoutWithId(newId, data));
+    navigate(`/entrenamientos/${newId}`, { replace: true });
+  }, [id, user, items.length, buildWorkoutData, upsertWorkout, trackWrite, navigate]);
+
+  // Autoguardado con debounce ante cualquier cambio.
+  useEffect(() => {
+    if (!id || hydratedIdRef.current !== id) return;
+    const json = JSON.stringify(buildWorkoutData());
+    if (lastSavedRef.current === '') {
+      // Primer render tras cargar: tomar como base, no guardar.
+      lastSavedRef.current = json;
+      return;
+    }
+    if (json === lastSavedRef.current) return;
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => void saveNow(), AUTOSAVE_DELAY_MS);
+  }, [id, buildWorkoutData, saveNow]);
+
+  // Al salir de la app (o de la página) se guarda lo pendiente sin esperar el debounce.
+  const saveNowRef = useRef(saveNow);
+  saveNowRef.current = saveNow;
+  useEffect(() => {
+    const flush = () => {
+      if (timerRef.current) void saveNowRef.current();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, []);
+
+  const filteredExercises = useMemo(() => {
+    let filtered = sortExercisesByMuscleGroup(exercises, muscleGroups);
+    if (selectedMuscleGroup) filtered = filtered.filter((e) => e.muscleGroupId === selectedMuscleGroup);
+    if (exerciseSearch) {
+      const q = exerciseSearch.toLowerCase();
+      filtered = filtered.filter((e) => e.name.toLowerCase().includes(q));
+    }
+    return filtered;
+  }, [exercises, muscleGroups, selectedMuscleGroup, exerciseSearch]);
+
+  const muscleGroupsSorted = useMemo(() => sortByDisplayOrder(muscleGroups), [muscleGroups]);
 
   const closeExerciseModal = () => {
     setShowExerciseModal(false);
@@ -57,284 +271,166 @@ export default function WorkoutForm() {
     setShowExerciseModal(true);
   };
 
-  useEffect(() => {
-    if (existingWorkout) {
-      setDate(existingWorkout.date);
-      setTitle(existingWorkout.title);
-      setNotes(existingWorkout.notes || '');
-      setDurationMinutes(existingWorkout.durationMinutes || '');
-      setWorkoutExercises(
-        existingWorkout.exercises.map((e, i) => ({
-          ...e,
-          tempId: `existing-${i}`,
-        }))
-      );
-    }
-  }, [existingWorkout]);
-
-  const filteredExercises = useMemo(() => {
-    let filtered = sortExercisesByMuscleGroup(exercises, muscleGroups);
-    if (selectedMuscleGroup) {
-      filtered = filtered.filter((e) => e.muscleGroupId === selectedMuscleGroup);
-    }
-    if (exerciseSearch) {
-      const q = exerciseSearch.toLowerCase();
-      filtered = filtered.filter((e) => e.name.toLowerCase().includes(q));
-    }
-    return filtered;
-  }, [exercises, muscleGroups, selectedMuscleGroup, exerciseSearch]);
-
-  const muscleGroupsSorted = useMemo(
-    () => sortByDisplayOrder(muscleGroups),
-    [muscleGroups]
-  );
-
-  const getExerciseName = (exerciseId: string) => {
-    const exercise = exercises.find((e) => e.id === exerciseId);
-    return exercise?.name || 'Ejercicio desconocido';
-  };
-
-  const getExerciseColor = (exerciseId: string) => {
-    const exercise = exercises.find((e) => e.id === exerciseId);
-    if (!exercise) return '#6b7280';
-    const group = muscleGroups.find((g) => g.id === exercise.muscleGroupId);
-    return group?.color || exercise.color || '#6b7280';
-  };
-
-  const getMuscleGroupName = (muscleGroupId: string) => {
-    const group = muscleGroups.find((g) => g.id === muscleGroupId);
-    return group?.name || '';
-  };
-
-  const isCardioExercise = (exerciseId: string) => {
-    const exercise = exercises.find((e) => e.id === exerciseId);
-    if (!exercise) return false;
-    const group = muscleGroups.find((g) => g.id === exercise.muscleGroupId);
-    return group?.trackingMode === 'cardio';
-  };
-
-  const defaultSetForExercise = (exerciseId: string): WorkoutSet => {
-    if (isCardioExercise(exerciseId)) {
-      return { reps: 10, weight: 0, durationMinutes: 10, completed: false };
-    }
-    return { reps: 10, weight: 0, completed: false };
-  };
+  const emptySet = (): FormSet => ({ reps: '', weight: '', minutes: '' });
 
   const addOrReplaceExercise = (exerciseId: string) => {
-    const exercise = exercises.find((e) => e.id === exerciseId);
+    const exercise = exerciseById.get(exerciseId);
     if (!exercise) return;
+    const equipment = defaultEquipmentFor(exerciseId, exercise.name, workouts, id);
 
     if (replacingTempId) {
-      setWorkoutExercises(
-        workoutExercises.map((we) => {
-          if (we.tempId !== replacingTempId) return we;
-          const wasCardio = isCardioExercise(we.exerciseId);
-          const isCardio = isCardioExercise(exerciseId);
-          const sets = we.sets.map((set) => {
-            if (wasCardio === isCardio) return set;
-            if (isCardio) {
-              return {
-                ...set,
-                weight: 0,
-                durationMinutes: set.durationMinutes ?? (set.weight || 10),
-              };
-            }
-            return {
-              reps: set.reps,
-              weight: set.weight || 0,
-              completed: set.completed,
-            };
-          });
-          return { ...we, exerciseId, sets };
+      setItems((prev) =>
+        prev.map((e) => {
+          if (e.tempId !== replacingTempId) return e;
+          const toCardio = isCardioExercise(exerciseId);
+          const sets = e.sets.map((s) => (toCardio ? { ...s, weight: '' } : { ...s, minutes: '' }));
+          return { ...e, exerciseId, equipment, sets };
         })
       );
-      closeExerciseModal();
-      return;
+    } else {
+      setItems((prev) => [
+        ...prev,
+        { tempId: nextTempId(), exerciseId, equipment, notes: '', sets: [emptySet()] },
+      ]);
     }
-
-    const newExercise: WorkoutExerciseForm = {
-      tempId: `new-${Date.now()}`,
-      exerciseId,
-      sets: [defaultSetForExercise(exerciseId)],
-      notes: '',
-    };
-    setWorkoutExercises([...workoutExercises, newExercise]);
     closeExerciseModal();
   };
 
-  const removeExercise = (tempId: string) => {
-    setWorkoutExercises(workoutExercises.filter((e) => e.tempId !== tempId));
-  };
+  const updateItem = (tempId: string, fn: (e: FormExercise) => FormExercise) =>
+    setItems((prev) => prev.map((e) => (e.tempId === tempId ? fn(e) : e)));
 
-  const addSet = (tempId: string) => {
-    setWorkoutExercises(
-      workoutExercises.map((e) => {
-        if (e.tempId === tempId) {
-          const lastSet = e.sets[e.sets.length - 1];
-          const cardio = isCardioExercise(e.exerciseId);
-          const nextSet: WorkoutSet = cardio
-            ? {
-                reps: lastSet?.reps || 10,
-                weight: 0,
-                durationMinutes: lastSet?.durationMinutes ?? 10,
-                completed: false,
-              }
-            : {
-                reps: lastSet?.reps || 10,
-                weight: lastSet?.weight || 0,
-                completed: false,
-              };
-          return {
-            ...e,
-            sets: [...e.sets, nextSet],
-          };
-        }
-        return e;
-      })
-    );
-  };
+  const removeExercise = (tempId: string) => setItems((prev) => prev.filter((e) => e.tempId !== tempId));
 
-  const removeSet = (tempId: string, setIndex: number) => {
-    setWorkoutExercises(
-      workoutExercises.map((e) => {
-        if (e.tempId === tempId && e.sets.length > 1) {
-          return {
-            ...e,
-            sets: e.sets.filter((_, i) => i !== setIndex),
-          };
-        }
-        return e;
-      })
-    );
-  };
+  // La serie nueva copia la anterior (lo habitual es repetir peso y reps).
+  const addSet = (tempId: string) =>
+    updateItem(tempId, (e) => {
+      const last = e.sets[e.sets.length - 1];
+      return { ...e, sets: [...e.sets, last ? { reps: last.reps, weight: last.weight, minutes: last.minutes } : emptySet()] };
+    });
 
-  const updateSet = (tempId: string, setIndex: number, field: keyof WorkoutSet, value: number | boolean) => {
-    setWorkoutExercises(
-      workoutExercises.map((e) => {
-        if (e.tempId === tempId) {
-          return {
-            ...e,
-            sets: e.sets.map((s, i) => (i === setIndex ? { ...s, [field]: value } : s)),
-          };
-        }
-        return e;
-      })
-    );
-  };
+  const removeSet = (tempId: string, setIndex: number) =>
+    updateItem(tempId, (e) => (e.sets.length > 1 ? { ...e, sets: e.sets.filter((_, i) => i !== setIndex) } : e));
 
-  const updateExerciseNotes = (tempId: string, notes: string) => {
-    setWorkoutExercises(
-      workoutExercises.map((e) => (e.tempId === tempId ? { ...e, notes } : e))
-    );
-  };
+  const updateSet = (tempId: string, setIndex: number, field: keyof Omit<FormSet, 'completed'>, value: string) =>
+    updateItem(tempId, (e) => ({
+      ...e,
+      sets: e.sets.map((s, i) => (i === setIndex ? { ...s, [field]: value } : s)),
+    }));
 
-  const moveExercise = (tempId: string, direction: 'up' | 'down') => {
-    const idx = workoutExercises.findIndex((e) => e.tempId === tempId);
-    if (idx < 0) return;
-    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (newIdx < 0 || newIdx >= workoutExercises.length) return;
+  const moveExercise = (tempId: string, direction: 'up' | 'down') =>
+    setItems((prev) => {
+      const idx = prev.findIndex((e) => e.tempId === tempId);
+      const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (idx < 0 || newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
 
-    const newList = [...workoutExercises];
-    [newList[idx], newList[newIdx]] = [newList[newIdx], newList[idx]];
-    setWorkoutExercises(newList);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleFinish = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-
-    if (workoutExercises.length === 0) {
+    if (items.length === 0) {
       showToast('Agregá al menos un ejercicio', 'warning');
       return;
     }
-
-    setSaving(true);
-    try {
-      const workoutData = {
-        date,
-        title: title.trim(),
-        notes: notes.trim() || undefined,
-        durationMinutes: durationMinutes || undefined,
-        exercises: workoutExercises.map(({ exerciseId, sets, notes }) => ({
-          exerciseId,
-          sets,
-          notes: notes || undefined,
-        })),
-        userId: user.uid,
-      };
-
-      if (isEditing && id) {
-        await updateWorkout(id, workoutData);
-        showToast('Entrenamiento actualizado', 'success');
-      } else {
-        await addWorkout(workoutData);
-        showToast('Entrenamiento guardado', 'success');
-      }
-      await refresh();
-      navigate('/entrenamientos');
-    } catch (error) {
-      console.error(error);
-      showToast('Error al guardar entrenamiento', 'error');
-    } finally {
-      setSaving(false);
-    }
+    const wasInProgress = status === 'in_progress';
+    setFinishing(true);
+    setStatus('done');
+    // No esperamos al servidor: sin señal queda en la caché y se sube al volver.
+    void saveNow('done');
+    showToast(wasInProgress ? 'Entrenamiento terminado' : 'Cambios guardados', 'success');
+    navigate('/entrenamientos');
   };
 
-  if (loading) {
+  const handleDiscard = async () => {
+    setConfirmDiscard(false);
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (id) {
+      removeWorkout(id);
+      deleteWorkout(id).catch((error) => {
+        console.error(error);
+        showToast('No se pudo descartar el entrenamiento', 'error');
+      });
+    }
+    showToast('Entrenamiento descartado', 'info');
+    navigate('/');
+  };
+
+  if (loading) return <PanelSkeleton />;
+
+  // Si ya hay uno en curso, "Nuevo" lleva a ese para no duplicar.
+  if (!id && inProgress) return <Navigate to={`/entrenamientos/${inProgress.id}`} replace />;
+
+  if (id && !existingWorkout) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-lg text-[var(--text-muted)] animate-pulse">Cargando...</div>
-      </div>
+      <EmptyState
+        title="Entrenamiento no encontrado"
+        description="Puede que se haya eliminado."
+        action={
+          <button type="button" onClick={() => navigate('/entrenamientos')} className="ui-btn ui-btn-secondary">
+            Volver al historial
+          </button>
+        }
+      />
     );
   }
 
-  if (isEditing && !existingWorkout && !loading) {
-    return (
-      <div className="text-center py-20">
-        <div className="text-[var(--text-muted)] mb-4">Entrenamiento no encontrado</div>
-        <button
-          type="button"
-          onClick={() => navigate('/entrenamientos')}
-          className="text-sm font-medium transition-colors hover:opacity-80"
-          style={{ color: headerColor }}
-        >
-          Volver al historial
-        </button>
-      </div>
-    );
-  }
+  const isInProgress = status === 'in_progress';
+  const pageTitle = !id ? 'Nuevo entrenamiento' : isInProgress ? 'Entrenamiento en curso' : 'Editar entrenamiento';
+  const saveLabel: Record<SaveState, string> = {
+    idle: isInProgress ? 'Se guarda solo mientras cargás' : 'Los cambios se guardan solos',
+    saving: 'Guardando…',
+    saved: 'Guardado',
+    offline: 'Sin señal: guardado en el teléfono, se sube al volver',
+    error: 'No se pudo guardar',
+  };
+
+  const chipClass = (active: boolean) =>
+    `ui-label ui-label-xs h-7 px-2.5 rounded-pill border transition-colors ${
+      active
+        ? 'bg-[var(--header-color)] border-transparent text-white'
+        : 'bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
+    }`;
 
   return (
     <>
+      <ConfirmModal
+        isOpen={confirmDiscard}
+        onClose={() => setConfirmDiscard(false)}
+        onConfirm={handleDiscard}
+        title="Descartar entrenamiento"
+        message="Se borra todo lo cargado en este entrenamiento. Esta acción no se puede deshacer."
+        confirmText="Descartar"
+        type="danger"
+      />
+
       <Modal
         isOpen={showExerciseModal}
         onClose={closeExerciseModal}
         title={replacingTempId ? 'Cambiar ejercicio' : 'Agregar ejercicio'}
       >
         <div className="space-y-4">
-          {replacingTempId && (
-            <p className="text-xs text-[var(--text-muted)]">
-              Se mantienen las series (reps, peso o minutos) ya cargadas.
-            </p>
-          )}
+          {replacingTempId && <p className="ui-caption">Se mantienen las series ya cargadas.</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="form-group mb-0">
-              <label className="text-xs">Buscar</label>
+              <label>Buscar</label>
               <input
                 type="text"
                 placeholder="Nombre del ejercicio..."
                 value={exerciseSearch}
                 onChange={(e) => setExerciseSearch(e.target.value)}
-                className="ui-input text-sm"
-                autoFocus
+                className="ui-input"
               />
             </div>
             <div className="form-group mb-0">
-              <label className="text-xs">Grupo muscular</label>
+              <label>Grupo muscular</label>
               <select
                 value={selectedMuscleGroup}
                 onChange={(e) => setSelectedMuscleGroup(e.target.value)}
-                className="ui-input text-sm"
+                className="ui-input"
               >
                 <option value="">Todos</option>
                 {muscleGroupsSorted.map((g) => (
@@ -346,49 +442,31 @@ export default function WorkoutForm() {
             </div>
           </div>
 
-          <div className="max-h-64 overflow-y-auto space-y-1">
+          <div className="max-h-64 overflow-y-auto space-y-1.5">
             {filteredExercises.length === 0 ? (
-              <p className="text-sm text-[var(--text-muted)] text-center py-4">
-                No se encontraron ejercicios
-              </p>
+              <p className="ui-caption text-center py-4">No se encontraron ejercicios</p>
             ) : (
               filteredExercises.map((exercise) => {
                 const currentId = replacingTempId
-                  ? workoutExercises.find((we) => we.tempId === replacingTempId)?.exerciseId
+                  ? items.find((e) => e.tempId === replacingTempId)?.exerciseId
                   : null;
                 const isCurrent = currentId === exercise.id;
-                const alreadyAdded = workoutExercises.some((we) => we.exerciseId === exercise.id);
-                const disabled = alreadyAdded && !isCurrent;
+                const disabled = items.some((e) => e.exerciseId === exercise.id) && !isCurrent;
                 return (
                   <button
                     key={exercise.id}
                     type="button"
                     onClick={() => addOrReplaceExercise(exercise.id)}
                     disabled={disabled}
-                    className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${
-                      disabled
-                        ? 'opacity-50 cursor-not-allowed'
-                        : theme === 'dark'
-                        ? 'hover:bg-white/5'
-                        : 'hover:bg-black/5'
-                    }`}
+                    className={`ui-list-item w-full text-left p-3 flex items-center gap-3 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    <div
-                      className="w-3 h-3 rounded-full shrink-0"
-                      style={{ backgroundColor: getExerciseColor(exercise.id) }}
-                    />
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getExerciseColor(exercise.id) }} />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-[var(--text)] truncate">{exercise.name}</div>
-                      <div className="text-xs text-[var(--text-muted)]">
-                        {getMuscleGroupName(exercise.muscleGroupId)}
-                      </div>
+                      <div className="ui-caption">{getMuscleGroupName(exercise.muscleGroupId)}</div>
                     </div>
-                    {isCurrent && (
-                      <span className="text-xs text-[var(--text-muted)]">Actual</span>
-                    )}
-                    {disabled && (
-                      <span className="text-xs text-[var(--text-muted)]">Agregado</span>
-                    )}
+                    {isCurrent && <span className="ui-caption">Actual</span>}
+                    {disabled && <span className="ui-caption">Agregado</span>}
                   </button>
                 );
               })
@@ -397,32 +475,30 @@ export default function WorkoutForm() {
         </div>
       </Modal>
 
-      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className={`text-xl sm:text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-            {isEditing ? 'Editar entrenamiento' : 'Nuevo entrenamiento'}
-          </h1>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-          >
-            Cancelar
-          </button>
+      <form onSubmit={handleFinish} className="space-y-4 sm:space-y-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="ui-page-title">{pageTitle}</h1>
+            <p className="ui-page-subtitle" aria-live="polite">
+              {id ? saveLabel[saveState] : 'Agregá el primer ejercicio y se empieza a guardar solo.'}
+            </p>
+          </div>
+          {isInProgress ? (
+            <button type="button" onClick={() => (id ? setConfirmDiscard(true) : navigate(-1))} className="ui-link-btn shrink-0">
+              {id ? 'Descartar' : 'Cancelar'}
+            </button>
+          ) : (
+            <button type="button" onClick={() => navigate(-1)} className="ui-link-btn shrink-0">
+              Volver
+            </button>
+          )}
         </div>
 
-        {/* Basic Info */}
-        <div className="ui-panel p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="ui-panel p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="form-group mb-0">
               <label>Fecha</label>
-              <DateInput
-                value={date}
-                onChange={setDate}
-                className="ui-input"
-                required
-                allowClear={false}
-              />
+              <DateInput value={date} onChange={setDate} className="ui-input" required allowClear={false} />
             </div>
             <div className="form-group mb-0">
               <label>Título (opcional)</label>
@@ -431,19 +507,6 @@ export default function WorkoutForm() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ej: Piernas, Push, Full Body..."
-                className="ui-input"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="form-group mb-0">
-              <label>Duración (minutos, opcional)</label>
-              <input
-                type="number"
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(e.target.value ? parseInt(e.target.value) : '')}
-                placeholder="60"
-                min="1"
                 className="ui-input"
               />
             </div>
@@ -460,264 +523,206 @@ export default function WorkoutForm() {
           </div>
         </div>
 
-        {/* Exercises */}
         <div className="ui-panel p-4 sm:p-6">
           <h2 className="ui-label ui-label-lg mb-4">Ejercicios</h2>
 
-          {workoutExercises.length === 0 ? (
-            <div className="text-center py-8 border-2 border-dashed border-[var(--border)] rounded-lg">
-              <div className="text-[var(--text-muted)] mb-2">No hay ejercicios agregados</div>
-              <button
-                type="button"
-                onClick={openAddExerciseModal}
-                className="text-sm font-medium transition-colors hover:opacity-80"
-                style={{ color: headerColor }}
-              >
-                Agregar primer ejercicio
-              </button>
-            </div>
+          {items.length === 0 ? (
+            <EmptyState
+              title="No hay ejercicios agregados"
+              description="Sumá el primero para empezar a cargar series."
+              action={
+                <button type="button" onClick={openAddExerciseModal} className="ui-btn ui-btn-primary">
+                  Agregar ejercicio
+                </button>
+              }
+            />
           ) : (
             <div className="space-y-4">
-              {workoutExercises.map((we, exIndex) => (
-                <div
-                  key={we.tempId}
-                  className="border border-[var(--border)] rounded-lg overflow-hidden"
-                >
-                  {/* Exercise Header */}
+              {items.map((item, exIndex) => {
+                const color = getExerciseColor(item.exerciseId);
+                const cardio = isCardioExercise(item.exerciseId);
+                const weightLabel = item.equipment === 'dumbbell' ? 'Kg c/u' : 'Kg';
+                return (
                   <div
-                    className="px-4 py-3 flex items-center justify-between gap-3"
-                    style={{ backgroundColor: getExerciseColor(we.exerciseId) + '20' }}
+                    key={item.tempId}
+                    className="border border-[var(--border)] rounded-[var(--radius-control)] overflow-hidden bg-[var(--surface-2)]"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex flex-col gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => moveExercise(we.tempId, 'up')}
-                          disabled={exIndex === 0}
-                          className="text-xs px-1 disabled:opacity-30"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveExercise(we.tempId, 'down')}
-                          disabled={exIndex === workoutExercises.length - 1}
-                          className="text-xs px-1 disabled:opacity-30"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                      <div
-                        className="w-3 h-3 rounded-full shrink-0"
-                        style={{ backgroundColor: getExerciseColor(we.exerciseId) }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => openReplaceExerciseModal(we.tempId)}
-                        className="font-semibold text-[var(--text)] truncate text-left hover:underline underline-offset-2"
-                        title="Cambiar ejercicio (conserva las series)"
-                      >
-                        {getExerciseName(we.exerciseId)}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => openReplaceExerciseModal(we.tempId)}
-                        className={`p-1.5 rounded text-xs font-medium transition-colors ${
-                          theme === 'dark'
-                            ? 'text-[var(--text-muted)] hover:bg-white/10 hover:text-[var(--text)]'
-                            : 'text-[var(--text-muted)] hover:bg-black/5 hover:text-[var(--text)]'
-                        }`}
-                        title="Cambiar ejercicio (conserva las series)"
-                      >
-                        Cambiar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeExercise(we.tempId)}
-                        className={`p-1.5 rounded transition-colors ${
-                          theme === 'dark'
-                            ? 'text-red-400 hover:bg-red-500/20'
-                            : 'text-red-600 hover:bg-red-100'
-                        }`}
-                        title="Quitar ejercicio"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Sets */}
-                  <div className="p-4 space-y-2">
-                    {isCardioExercise(we.exerciseId) ? (
-                      <>
-                        <div className="grid grid-cols-12 gap-2 text-xs font-medium text-[var(--text-muted)] px-1">
-                          <div className="col-span-1">#</div>
-                          <div className="col-span-4">Reps</div>
-                          <div className="col-span-5">Minutos</div>
-                          <div className="col-span-2"></div>
-                        </div>
-                        {we.sets.map((set, setIndex) => (
-                          <div key={setIndex} className="grid grid-cols-12 gap-2 items-center">
-                            <div className="col-span-1 text-sm text-[var(--text-muted)]">{setIndex + 1}</div>
-                            <div className="col-span-4">
-                              <input
-                                type="number"
-                                value={set.reps}
-                                onChange={(e) =>
-                                  updateSet(we.tempId, setIndex, 'reps', parseInt(e.target.value) || 0)
-                                }
-                                min="0"
-                                className="ui-input text-sm py-1.5"
-                              />
-                            </div>
-                            <div className="col-span-5">
-                              <input
-                                type="number"
-                                value={set.durationMinutes ?? 0}
-                                onChange={(e) =>
-                                  updateSet(
-                                    we.tempId,
-                                    setIndex,
-                                    'durationMinutes',
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                                min="0"
-                                step="0.5"
-                                className="ui-input text-sm py-1.5"
-                              />
-                            </div>
-                            <div className="col-span-2 flex justify-end">
-                              {we.sets.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => removeSet(we.tempId, setIndex)}
-                                  className={`p-1 rounded transition-colors ${
-                                    theme === 'dark'
-                                      ? 'text-red-400 hover:bg-red-500/20'
-                                      : 'text-red-600 hover:bg-red-100'
-                                  }`}
-                                  title="Quitar serie"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                                  </svg>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-12 gap-2 text-xs font-medium text-[var(--text-muted)] px-1">
-                          <div className="col-span-1">#</div>
-                          <div className="col-span-4">Reps</div>
-                          <div className="col-span-5">Peso (kg)</div>
-                          <div className="col-span-2"></div>
-                        </div>
-                        {we.sets.map((set, setIndex) => (
-                          <div key={setIndex} className="grid grid-cols-12 gap-2 items-center">
-                            <div className="col-span-1 text-sm text-[var(--text-muted)]">{setIndex + 1}</div>
-                            <div className="col-span-4">
-                              <input
-                                type="number"
-                                value={set.reps}
-                                onChange={(e) =>
-                                  updateSet(we.tempId, setIndex, 'reps', parseInt(e.target.value) || 0)
-                                }
-                                min="0"
-                                className="ui-input text-sm py-1.5"
-                              />
-                            </div>
-                            <div className="col-span-5">
-                              <input
-                                type="number"
-                                value={set.weight}
-                                onChange={(e) =>
-                                  updateSet(we.tempId, setIndex, 'weight', parseFloat(e.target.value) || 0)
-                                }
-                                min="0"
-                                step="0.5"
-                                className="ui-input text-sm py-1.5"
-                              />
-                            </div>
-                            <div className="col-span-2 flex justify-end">
-                              {we.sets.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => removeSet(we.tempId, setIndex)}
-                                  className={`p-1 rounded transition-colors ${
-                                    theme === 'dark'
-                                      ? 'text-red-400 hover:bg-red-500/20'
-                                      : 'text-red-600 hover:bg-red-100'
-                                  }`}
-                                  title="Quitar serie"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                                  </svg>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => addSet(we.tempId)}
-                      className="w-full py-2 text-sm font-medium border border-dashed border-[var(--border)] rounded-lg transition-colors hover:border-[var(--border-strong)]"
-                      style={{ color: headerColor }}
+                    <div
+                      className="px-3 sm:px-4 py-3 space-y-2"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${color} 16%, var(--surface))`,
+                        boxShadow: `inset 4px 0 0 ${color}`,
+                      }}
                     >
-                      + Agregar serie
-                    </button>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex flex-col">
+                            <button
+                              type="button"
+                              onClick={() => moveExercise(item.tempId, 'up')}
+                              disabled={exIndex === 0}
+                              className="ui-link-btn !min-h-0 !px-1 text-xs disabled:opacity-30"
+                              aria-label="Subir ejercicio"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveExercise(item.tempId, 'down')}
+                              disabled={exIndex === items.length - 1}
+                              className="ui-link-btn !min-h-0 !px-1 text-xs disabled:opacity-30"
+                              aria-label="Bajar ejercicio"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openReplaceExerciseModal(item.tempId)}
+                            className="font-semibold text-[var(--text)] truncate text-left hover:underline underline-offset-2"
+                            title="Cambiar ejercicio (conserva las series)"
+                          >
+                            {getExerciseName(item.exerciseId)}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openReplaceExerciseModal(item.tempId)}
+                            className="ui-link-btn text-xs"
+                            title="Cambiar ejercicio (conserva las series)"
+                          >
+                            Cambiar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeExercise(item.tempId)}
+                            className="ui-row-action is-delete"
+                            title="Quitar ejercicio"
+                            aria-label="Quitar ejercicio"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {!cardio && (
+                        <div className="flex items-center gap-1.5 pl-7" role="group" aria-label="Equipamiento">
+                          <button
+                            type="button"
+                            className={chipClass(item.equipment === 'total')}
+                            aria-pressed={item.equipment === 'total'}
+                            onClick={() => updateItem(item.tempId, (e) => ({ ...e, equipment: 'total' }))}
+                          >
+                            Barra / Máq.
+                          </button>
+                          <button
+                            type="button"
+                            className={chipClass(item.equipment === 'dumbbell')}
+                            aria-pressed={item.equipment === 'dumbbell'}
+                            onClick={() => updateItem(item.tempId, (e) => ({ ...e, equipment: 'dumbbell' }))}
+                          >
+                            Mancuernas
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
-                    <div className="pt-2">
+                    <div className="p-3 sm:p-4 space-y-2">
+                      <div className="grid grid-cols-12 gap-2 ui-label ui-label-xs px-1">
+                        <div className="col-span-1">#</div>
+                        <div className="col-span-5">Reps</div>
+                        <div className="col-span-5">{cardio ? 'Minutos' : weightLabel}</div>
+                        <div className="col-span-1" />
+                      </div>
+                      {item.sets.map((set, setIndex) => (
+                        <div key={setIndex} className="grid grid-cols-12 gap-2 items-center">
+                          <div className="col-span-1 text-sm text-[var(--text-muted)]">{setIndex + 1}</div>
+                          <div className="col-span-5">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              enterKeyHint="next"
+                              value={set.reps}
+                              placeholder="10"
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => updateSet(item.tempId, setIndex, 'reps', cleanInt(e.target.value))}
+                              className="ui-input"
+                              aria-label={`Reps serie ${setIndex + 1}`}
+                            />
+                          </div>
+                          <div className="col-span-5">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              enterKeyHint="done"
+                              value={cardio ? set.minutes : set.weight}
+                              placeholder={cardio ? 'min' : 'kg'}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) =>
+                                updateSet(item.tempId, setIndex, cardio ? 'minutes' : 'weight', cleanDecimal(e.target.value))
+                              }
+                              className="ui-input"
+                              aria-label={`${cardio ? 'Minutos' : weightLabel} serie ${setIndex + 1}`}
+                            />
+                          </div>
+                          <div className="col-span-1 flex justify-end">
+                            {item.sets.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeSet(item.tempId, setIndex)}
+                                className="ui-row-action is-delete"
+                                title="Quitar serie"
+                                aria-label="Quitar serie"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => addSet(item.tempId)} className="ui-btn ui-btn-secondary w-full">
+                        + Agregar serie
+                      </button>
                       <input
                         type="text"
-                        value={we.notes || ''}
-                        onChange={(e) => updateExerciseNotes(we.tempId, e.target.value)}
+                        value={item.notes}
+                        onChange={(e) => updateItem(item.tempId, (x) => ({ ...x, notes: e.target.value }))}
                         placeholder="Notas del ejercicio (opcional)..."
-                        className="ui-input text-sm"
+                        className="ui-input"
                       />
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          <div className="flex justify-end mt-4">
-            <button
-              type="button"
-              onClick={openAddExerciseModal}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-opacity hover:opacity-90"
-              style={{ backgroundColor: headerColor }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Agregar
-            </button>
-          </div>
+          {items.length > 0 && (
+            <div className="flex justify-end mt-4">
+              <button type="button" onClick={openAddExerciseModal} className="ui-btn ui-btn-secondary">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Agregar ejercicio
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Submit */}
-        <div className="flex gap-3">
+        {id && (
           <button
             type="submit"
-            disabled={saving}
-            className="flex-1 py-3 rounded-lg text-white font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: headerColor }}
+            disabled={finishing}
+            className="ui-btn ui-btn-primary ui-btn-submit w-full !min-h-[3rem]"
           >
-            {saving ? 'Guardando...' : isEditing ? 'Guardar cambios' : 'Guardar entrenamiento'}
+            {isInProgress ? 'Terminar entrenamiento' : 'Listo'}
           </button>
-        </div>
+        )}
       </form>
     </>
   );

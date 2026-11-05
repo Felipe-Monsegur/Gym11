@@ -1,17 +1,16 @@
-import { useTheme } from '../context/ThemeContext';
 
 export default function InfoPage() {
-  const { theme, headerColor } = useTheme();
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <h1 className={`text-xl sm:text-3xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-        Información
-      </h1>
+      <div>
+        <h1 className="ui-page-title">Información</h1>
+        <p className="ui-page-subtitle">Cómo funciona Gym11.</p>
+      </div>
 
       <div className="ui-panel p-4 sm:p-6 space-y-6">
         <section>
-          <h2 className="ui-label ui-label-lg mb-3" style={{ color: headerColor }}>
+          <h2 className="ui-label ui-label-lg mb-3" style={{ color: 'var(--accent-text)' }}>
             Bienvenido a Gym11
           </h2>
           <p className="text-[var(--text-muted)] text-sm leading-relaxed">
@@ -21,7 +20,7 @@ export default function InfoPage() {
         </section>
 
         <section>
-          <h2 className="ui-label ui-label-lg mb-3" style={{ color: headerColor }}>
+          <h2 className="ui-label ui-label-lg mb-3" style={{ color: 'var(--accent-text)' }}>
             Cómo empezar
           </h2>
           <ol className="list-decimal list-inside space-y-2 text-[var(--text-muted)] text-sm">
@@ -41,7 +40,7 @@ export default function InfoPage() {
         </section>
 
         <section>
-          <h2 className="ui-label ui-label-lg mb-3" style={{ color: headerColor }}>
+          <h2 className="ui-label ui-label-lg mb-3" style={{ color: 'var(--accent-text)' }}>
             Conceptos clave
           </h2>
           <dl className="space-y-3 text-sm">
@@ -73,7 +72,7 @@ export default function InfoPage() {
         </section>
 
         <section>
-          <h2 className="ui-label ui-label-lg mb-3" style={{ color: headerColor }}>
+          <h2 className="ui-label ui-label-lg mb-3" style={{ color: 'var(--accent-text)' }}>
             Tips de entrenamiento
           </h2>
           <ul className="space-y-2 text-[var(--text-muted)] text-sm">
@@ -101,7 +100,7 @@ export default function InfoPage() {
         </section>
 
         <section>
-          <h2 className="ui-label ui-label-lg mb-3" style={{ color: headerColor }}>
+          <h2 className="ui-label ui-label-lg mb-3" style={{ color: 'var(--accent-text)' }}>
             Personalización
           </h2>
           <p className="text-[var(--text-muted)] text-sm leading-relaxed">

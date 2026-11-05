@@ -9,10 +9,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Gym11" />
     <meta name="application-name" content="Gym11" />
-    <meta name="theme-color" content="#0c111b" />
+    <meta name="theme-color" content="#121212" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -21,9 +21,45 @@
       rel="stylesheet"
     />
     <title>Gym11</title>
+    <meta name="build-id" content="%BUILD_ID%" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <script>
+      try {
+        if (localStorage.getItem('sidebarCollapsed') === '1') {
+          document.documentElement.classList.add('sidebar-collapsed');
+        }
+      } catch (e) {}
+    </script>
+    <script>
+      (function () {
+        var meta = document.querySelector('meta[name="build-id"]');
+        var localId = meta && meta.getAttribute('content');
+        if (!localId || localId.indexOf('%BUILD_ID%') !== -1) return;
+        var ATTEMPT_KEY = 'gym11-build-reload-attempts';
+        fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (!data || !data.buildId) return;
+            if (data.buildId === localId) {
+              try { sessionStorage.removeItem(ATTEMPT_KEY); } catch (e) {}
+              return;
+            }
+            var attempts = 0;
+            try { attempts = Number(sessionStorage.getItem(ATTEMPT_KEY) || '0'); } catch (e) {}
+            if (attempts >= 2) return;
+            try { sessionStorage.setItem(ATTEMPT_KEY, String(attempts + 1)); } catch (e) {}
+            var url = new URL(window.location.href);
+            url.searchParams.set('_bid', data.buildId);
+            window.location.replace(url.toString());
+          })
+          .catch(function () {});
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+
+
